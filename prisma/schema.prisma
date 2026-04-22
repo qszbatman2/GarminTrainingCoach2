@@ -1,0 +1,56 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id             String        @id @default(cuid())
+  email          String        @unique
+  password       String?
+  name           String?
+  garminEmail    String?
+  garminPassword String?       // 简单起见MVP先明文/简单加密存储
+  metrics        DailyMetric[]
+  activities     Activity[]
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+}
+
+model DailyMetric {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id])
+  date       DateTime
+  sleepScore Int?
+  restingHr  Int?
+  hrv        Int?
+  stress     Int?
+  raw        Json
+  createdAt  DateTime @default(now())
+
+  @@unique([userId, date])
+}
+
+model Activity {
+  id        String   @id @default(cuid())
+  garminId  String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  name      String
+  type      String
+  distance  Float?
+  duration  Float?
+  date      DateTime
+  raw       Json
+  createdAt DateTime @default(now())
+}

@@ -17,6 +17,9 @@
 /.next/
 /out/
 
+# local sqlite dev db (contains secrets)
+/prisma/dev.db
+
 # production
 /build
 
@@ -39,3 +42,5 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+/src/generated/prisma
