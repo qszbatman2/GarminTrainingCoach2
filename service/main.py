@@ -9,6 +9,14 @@ import hashlib
 app = FastAPI(title="Garmin Data Scraper Microservice")
 logger = logging.getLogger(__name__)
 
+@app.get("/")
+def root():
+    return {"ok": True}
+
+@app.get("/health")
+def health():
+    return {"status": "ok"}
+
 
 def _tokenstore_path(email: str) -> str:
     token_dir = os.path.join(os.path.dirname(__file__), ".tokens")
