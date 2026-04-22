@@ -1,0 +1,14 @@
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: garmin
+    ports:
+      - "5432:5432"
+    volumes:
+      - garmin_pgdata:/var/lib/postgresql/data
+
+volumes:
+  garmin_pgdata:

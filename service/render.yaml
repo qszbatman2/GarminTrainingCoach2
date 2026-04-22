@@ -1,0 +1,7 @@
+services:
+  - type: web
+    name: garmin-scraper
+    env: docker
+    rootDir: service
+    plan: free
+    autoDeploy: true
