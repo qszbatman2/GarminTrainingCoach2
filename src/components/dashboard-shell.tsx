@@ -81,6 +81,23 @@ export function DashboardShell({
     [latestMetric]
   )
 
+  const dailyRawKeys = useMemo(() => {
+    if (!latestMetric?.raw || typeof latestMetric.raw !== "object") {
+      return []
+    }
+
+    return Object.keys(latestMetric.raw as Record<string, unknown>).sort()
+  }, [latestMetric?.raw])
+
+  const activityRawKeys = useMemo(() => {
+    const raw = activities[0]?.raw
+    if (!raw || typeof raw !== "object") {
+      return []
+    }
+
+    return Object.keys(raw as Record<string, unknown>).sort()
+  }, [activities])
+
   async function handleSaveBinding(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setBindingLoading(true)
@@ -295,12 +312,18 @@ export function DashboardShell({
           <div className="mt-6 grid gap-4 lg:grid-cols-2">
             <details className="rounded-3xl border border-slate-200 bg-slate-50 px-5 py-4">
               <summary className="cursor-pointer text-sm font-medium text-slate-700">展开：本次同步的 Daily Raw JSON</summary>
+              <div className="mt-3 text-xs text-slate-500">
+                顶层字段数：{dailyRawKeys.length}（{dailyRawKeys.slice(0, 16).join(", ")}{dailyRawKeys.length > 16 ? ", ..." : ""}）
+              </div>
               <pre className="mt-4 max-h-80 overflow-auto rounded-2xl bg-white p-4 text-xs text-slate-700">
                 {latestMetric?.raw ? JSON.stringify(latestMetric.raw, null, 2) : "暂无"}
               </pre>
             </details>
             <details className="rounded-3xl border border-slate-200 bg-slate-50 px-5 py-4">
               <summary className="cursor-pointer text-sm font-medium text-slate-700">展开：最近一条 Activity Raw JSON</summary>
+              <div className="mt-3 text-xs text-slate-500">
+                顶层字段数：{activityRawKeys.length}（{activityRawKeys.slice(0, 16).join(", ")}{activityRawKeys.length > 16 ? ", ..." : ""}）
+              </div>
               <pre className="mt-4 max-h-80 overflow-auto rounded-2xl bg-white p-4 text-xs text-slate-700">
                 {activities[0]?.raw ? JSON.stringify(activities[0].raw, null, 2) : "暂无"}
               </pre>

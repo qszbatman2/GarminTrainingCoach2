@@ -6,7 +6,7 @@ import os
 import logging
 import hashlib
 
-app = FastAPI(title="Garmin Data Scraper Microservice")
+app = FastAPI(title="Garmin Data Scraper Microservice", version="0.1.1")
 logger = logging.getLogger(__name__)
 
 @app.get("/")
@@ -16,6 +16,16 @@ def root():
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+@app.get("/version")
+def version():
+    # Render/Vercel may inject git metadata; expose it so we can confirm deployments.
+    return {
+        "service": "garmin-scraper",
+        "version": "0.1.1",
+        "render_git_commit": os.getenv("RENDER_GIT_COMMIT"),
+        "render_service_id": os.getenv("RENDER_SERVICE_ID"),
+    }
 
 
 def _tokenstore_path(email: str) -> str:
