@@ -56,14 +56,45 @@ def sync_garmin_data(req: SyncRequest):
         stats = safe_fetch(client.get_stats, date_iso)  # Daily summary
         sleep = safe_fetch(client.get_sleep_data, date_iso)  # Sleep detail
         hrv = safe_fetch(client.get_hrv_data, date_iso)  # HRV detail
-        body_battery = safe_fetch(client.get_body_battery, date_iso) # Body battery/Stress
+        body_battery = safe_fetch(client.get_body_battery, date_iso, date_iso)  # Body battery (range)
         blood_oxygen = safe_fetch(client.get_spo2_data, date_iso) # Blood oxygen
-        training_status = safe_fetch(client.get_training_status, date_iso) # Training status
+        training_status = safe_fetch(getattr(client, "get_training_status", lambda *_: None), date_iso)  # May not exist in some versions
+
+        # Additional daily health + training metrics (best-effort)
+        stress_data = safe_fetch(client.get_stress_data, date_iso)
+        heart_rates = safe_fetch(client.get_heart_rates, date_iso)
+        respiration = safe_fetch(client.get_respiration_data, date_iso)
+        steps_data = safe_fetch(client.get_steps_data, date_iso)
+        daily_steps = safe_fetch(client.get_daily_steps, date_iso, date_iso)
+        intensity_minutes = safe_fetch(client.get_intensity_minutes_data, date_iso)
+        floors = safe_fetch(client.get_floors, date_iso)
+        max_metrics = safe_fetch(client.get_max_metrics, date_iso)
+        training_readiness = safe_fetch(client.get_training_readiness, date_iso)
+        morning_training_readiness = safe_fetch(client.get_morning_training_readiness, date_iso)
+        endurance_score = safe_fetch(client.get_endurance_score, date_iso, date_iso)
+        hill_score = safe_fetch(client.get_hill_score, date_iso, date_iso)
+        running_tolerance = safe_fetch(client.get_running_tolerance, date_iso, date_iso)
         
         # Fetch activities for the day safely
         activities = safe_fetch(client.get_activities_by_date, date_iso, date_iso)
         if activities is None:
             activities = []
+
+        # Enrich each activity with details (best-effort). Usually there are only a few per day.
+        enriched = []
+        for act in activities:
+            try:
+                activity_id = str(act.get("activityId"))
+            except Exception:
+                activity_id = ""
+
+            if activity_id:
+                act["details"] = safe_fetch(client.get_activity_details, activity_id)
+                act["splits"] = safe_fetch(client.get_activity_splits, activity_id)
+                act["split_summaries"] = safe_fetch(client.get_activity_split_summaries, activity_id)
+                act["hr_in_timezones"] = safe_fetch(client.get_activity_hr_in_timezones, activity_id)
+
+            enriched.append(act)
         
         return {
             "status": "success",
@@ -75,9 +106,22 @@ def sync_garmin_data(req: SyncRequest):
                     "hrv": hrv,
                     "body_battery": body_battery,
                     "blood_oxygen": blood_oxygen,
-                    "training_status": training_status
+                    "training_status": training_status,
+                    "stress": stress_data,
+                    "heart_rates": heart_rates,
+                    "respiration": respiration,
+                    "steps": steps_data,
+                    "daily_steps": daily_steps,
+                    "intensity_minutes": intensity_minutes,
+                    "floors": floors,
+                    "max_metrics": max_metrics,
+                    "training_readiness": training_readiness,
+                    "morning_training_readiness": morning_training_readiness,
+                    "endurance_score": endurance_score,
+                    "hill_score": hill_score,
+                    "running_tolerance": running_tolerance,
                 },
-                "activities": activities
+                "activities": enriched
             }
         }
         

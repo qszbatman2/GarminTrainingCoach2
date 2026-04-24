@@ -39,6 +39,7 @@ export default async function Home() {
         distance: activity.distance,
         duration: activity.duration,
         date: activity.date.toISOString().slice(0, 10),
+        raw: activity.raw,
       }))}
       garminEmail={user.garminEmail ?? ""}
       latestMetric={
@@ -49,6 +50,7 @@ export default async function Home() {
               hrv: latestMetric.hrv,
               restingHr: latestMetric.restingHr,
               stress: latestMetric.stress,
+              raw: latestMetric.raw,
             }
           : null
       }

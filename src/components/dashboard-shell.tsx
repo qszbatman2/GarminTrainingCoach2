@@ -10,6 +10,7 @@ type MetricSnapshot = {
   hrv: number | null
   restingHr: number | null
   stress: number | null
+  raw?: unknown
 }
 
 type ActivitySnapshot = {
@@ -19,6 +20,7 @@ type ActivitySnapshot = {
   distance: number | null
   duration: number | null
   date: string
+  raw?: unknown
 }
 
 type DashboardShellProps = {
@@ -288,6 +290,21 @@ export function DashboardShell({
             ) : (
               <div className="px-5 py-8 text-sm text-slate-500">还没有活动记录，先绑定并同步一条数据。</div>
             )}
+          </div>
+
+          <div className="mt-6 grid gap-4 lg:grid-cols-2">
+            <details className="rounded-3xl border border-slate-200 bg-slate-50 px-5 py-4">
+              <summary className="cursor-pointer text-sm font-medium text-slate-700">展开：本次同步的 Daily Raw JSON</summary>
+              <pre className="mt-4 max-h-80 overflow-auto rounded-2xl bg-white p-4 text-xs text-slate-700">
+                {latestMetric?.raw ? JSON.stringify(latestMetric.raw, null, 2) : "暂无"}
+              </pre>
+            </details>
+            <details className="rounded-3xl border border-slate-200 bg-slate-50 px-5 py-4">
+              <summary className="cursor-pointer text-sm font-medium text-slate-700">展开：最近一条 Activity Raw JSON</summary>
+              <pre className="mt-4 max-h-80 overflow-auto rounded-2xl bg-white p-4 text-xs text-slate-700">
+                {activities[0]?.raw ? JSON.stringify(activities[0].raw, null, 2) : "暂无"}
+              </pre>
+            </details>
           </div>
         </section>
       </div>
