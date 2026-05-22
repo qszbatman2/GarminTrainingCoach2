@@ -35,8 +35,51 @@ type DataSyncCenterProps = {
   initialBackfillJob: BackfillJobSnapshot | null
 }
 
+const SUPPORTED_FIELD_GROUPS = [
+  {
+    title: "恢复与睡眠",
+    fields: ["睡眠评分", "睡眠时长", "深睡", "REM", "睡眠中断", "清醒时长", "HRV", "训练准备度"],
+  },
+  {
+    title: "心率与能量",
+    fields: ["静息心率", "心率分时", "压力", "Body Battery 高点", "Body Battery 低点", "Body Battery 分时", "呼吸频率", "血氧"],
+  },
+  {
+    title: "活动与代谢",
+    fields: ["步数", "活动消耗", "静息消耗", "久坐时长", "强度分钟", "中高强度分钟", "爬楼层数", "体重"],
+  },
+  {
+    title: "训练负荷与能力",
+    fields: ["7 天急性负荷", "长期慢性负荷", "急慢性负荷比", "低有氧负荷", "高有氧负荷", "无氧负荷", "建议恢复时长", "VO2 Max", "乳酸阈值心率", "耐力分数", "爬坡分数", "跑步耐受"],
+  },
+  {
+    title: "活动明细",
+    fields: ["活动概要", "活动详情", "Splits", "Split Summaries", "心率分区", "距离", "时长"],
+  },
+]
+
 function asStringArray(value: unknown) {
   return Array.isArray(value) ? value.map((item) => String(item)) : []
+}
+
+function getUpdatedFields(message?: string | null) {
+  if (!message || !message.includes("；已更新字段：")) {
+    return []
+  }
+
+  const [, fieldsText = ""] = message.split("；已更新字段：")
+  return fieldsText
+    .split("、")
+    .map((item) => item.trim())
+    .filter(Boolean)
+}
+
+function getMessageWithoutUpdatedFields(message?: string | null) {
+  if (!message) {
+    return "--"
+  }
+
+  return message.split("；已更新字段：")[0] ?? message
 }
 
 function formatDateTime(value?: string | null) {
@@ -86,6 +129,7 @@ export function DataSyncCenter({
   const [syncDate, setSyncDate] = useState(new Date().toISOString().split("T")[0])
   const [syncLoading, setSyncLoading] = useState(false)
   const [syncResult, setSyncResult] = useState("")
+  const [syncUpdatedFields, setSyncUpdatedFields] = useState<string[]>([])
   const [backfillLoading, setBackfillLoading] = useState(false)
   const [resumeLoading, setResumeLoading] = useState(false)
   const [backfillResult, setBackfillResult] = useState("")
@@ -97,6 +141,7 @@ export function DataSyncCenter({
   const backfillSyncedDates = useMemo(() => asStringArray(backfillJob?.syncedDates), [backfillJob?.syncedDates])
   const backfillSkippedDates = useMemo(() => asStringArray(backfillJob?.skippedDates), [backfillJob?.skippedDates])
   const backfillFailedDates = useMemo(() => asStringArray(backfillJob?.failedDates), [backfillJob?.failedDates])
+  const backfillUpdatedFields = useMemo(() => getUpdatedFields(backfillJob?.message), [backfillJob?.message])
   const currentBackfillDate = useMemo(() => {
     if (!backfillJob || !["pending", "running"].includes(backfillJob.status)) {
       return null
@@ -141,6 +186,7 @@ export function DataSyncCenter({
     event.preventDefault()
     setSyncLoading(true)
     setSyncResult("")
+    setSyncUpdatedFields([])
 
     try {
       const response = await fetch("/api/garmin-sync", {
@@ -154,9 +200,16 @@ export function DataSyncCenter({
         throw new Error(data.error || "同步失败")
       }
 
-      setSyncResult(`同步完成：写入 1 条每日快照，活动 ${data.activitiesCount} 条。`)
+      const updatedFields = Array.isArray(data.updatedFields) ? data.updatedFields.map((item: unknown) => String(item)) : []
+      setSyncUpdatedFields(updatedFields)
+      setSyncResult(
+        data.dataChanged
+          ? `同步完成：写入 1 条每日快照，活动 ${data.activitiesCount} 条。已更新 ${updatedFields.length > 0 ? updatedFields.join("、") : "缺口数据"}。`
+          : `同步完成：当前日期无新增差异，活动 ${data.activitiesCount} 条。`
+      )
       router.refresh()
     } catch (error: unknown) {
+      setSyncUpdatedFields([])
       setSyncResult(error instanceof Error ? error.message : "同步失败")
     } finally {
       setSyncLoading(false)
@@ -266,6 +319,15 @@ export function DataSyncCenter({
             </div>
 
             {syncResult ? <div className="rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-slate-300">{syncResult}</div> : null}
+            {syncUpdatedFields.length > 0 ? (
+              <div className="flex flex-wrap gap-2">
+                {syncUpdatedFields.map((field) => (
+                  <AccentPill key={field} tone="cyan">
+                    {field}
+                  </AccentPill>
+                ))}
+              </div>
+            ) : null}
 
             <button
               className="w-full rounded-2xl bg-cyan-300 px-5 py-3 text-sm font-medium text-slate-950 transition hover:bg-cyan-200 disabled:cursor-not-allowed disabled:opacity-60"
@@ -311,12 +373,24 @@ export function DataSyncCenter({
 
             <div className="mt-5 grid gap-4 md:grid-cols-2">
               <MetricTile detail="当前任务命中的日期" label="当前检查日期" value={currentBackfillDate ?? "--"} />
-              <MetricTile detail="最近一步服务器反馈" label="当前步骤" value={backfillJob.message ?? "--"} />
+              <MetricTile detail="最近一步服务器反馈" label="当前步骤" value={getMessageWithoutUpdatedFields(backfillJob.message)} />
               <MetricTile detail="任务启动时间" label="开始时间" value={formatDateTime(backfillJob.startedAt)} />
               <MetricTile detail="最近运行心跳" label="最近心跳" value={formatDateTime(backfillJob.heartbeatAt)} />
             </div>
 
             {backfillJob.lastError ? <div className="mt-4 text-sm text-rose-300">最近错误：{backfillJob.lastError}</div> : null}
+            {backfillUpdatedFields.length > 0 ? (
+              <div className="mt-4">
+                <div className="text-xs uppercase tracking-[0.2em] text-cyan-300/72">本次累计更新</div>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {backfillUpdatedFields.map((field) => (
+                    <AccentPill key={field} tone="cyan">
+                      {field}
+                    </AccentPill>
+                  ))}
+                </div>
+              </div>
+            ) : null}
           </SurfaceCard>
 
           <SurfaceCard className="p-6">
@@ -346,6 +420,31 @@ export function DataSyncCenter({
           </SurfaceCard>
         </section>
       ) : null}
+
+      <SurfaceCard className="p-6">
+        <div className="flex items-center justify-between gap-3">
+          <h3 className="text-lg font-semibold text-white">已支持数据字段</h3>
+          <AccentPill tone="violet">按类型分组</AccentPill>
+        </div>
+        <p className="mt-2 text-sm text-slate-400">同步页关注的是“能拉什么”和“这次实际更新了什么”，分析页再看具体图表。</p>
+        <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {SUPPORTED_FIELD_GROUPS.map((group) => (
+            <SubtleCard className="p-4" key={group.title}>
+              <div className="text-xs uppercase tracking-[0.2em] text-slate-400">{group.title}</div>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {group.fields.map((field) => (
+                  <span
+                    className="inline-flex rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-xs text-slate-300"
+                    key={field}
+                  >
+                    {field}
+                  </span>
+                ))}
+              </div>
+            </SubtleCard>
+          ))}
+        </div>
+      </SurfaceCard>
     </div>
   )
 }

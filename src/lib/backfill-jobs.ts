@@ -1,7 +1,7 @@
 import { Prisma } from "@prisma/client"
 
 import prisma from "@/lib/prisma"
-import { getDateKey, syncGarminDateForUser } from "@/lib/garmin-sync"
+import { formatUpdatedFieldsSummary, getDateKey, mergeUpdatedFields, syncGarminDateForUser } from "@/lib/garmin-sync"
 
 const BACKFILL_SECRET = () => process.env.CRON_SECRET ?? process.env.AUTH_SECRET ?? ""
 const JOB_CHUNK_SIZE = 4
@@ -14,6 +14,22 @@ function arrayFromJson(value: unknown) {
 
 function toJsonArray(values: string[]) {
   return values as JsonStringArray
+}
+
+function parseUpdatedFieldsFromMessage(message?: string | null) {
+  if (!message || !message.includes("已更新字段：")) {
+    return []
+  }
+
+  const [, fieldsText = ""] = message.split("已更新字段：")
+  return fieldsText
+    .split("、")
+    .map((item) => item.trim())
+    .filter(Boolean)
+}
+
+function buildJobMessage(base: string, updatedFields: string[]) {
+  return updatedFields.length > 0 ? `${base}；${formatUpdatedFieldsSummary(updatedFields)}` : base
 }
 
 export function getBackfillDateRange(days: number) {
@@ -183,13 +199,14 @@ export async function processBackfillJob(jobId: string) {
   const syncedDates = arrayFromJson(job.syncedDates)
   const skippedDates = arrayFromJson(job.skippedDates)
   const failedDates = arrayFromJson(job.failedDates)
+  let updatedFields = parseUpdatedFieldsFromMessage(job.message)
 
   if (job.currentIndex >= targetDates.length) {
     await prisma.backfillJob.update({
       where: { id: jobId },
       data: {
         status: "completed",
-        message: failedDates.length > 0 ? `补拉完成，但仍有 ${failedDates.length} 天失败` : "补拉完成",
+        message: buildJobMessage(failedDates.length > 0 ? `补拉完成，但仍有 ${failedDates.length} 天失败` : "补拉完成", updatedFields),
         finishedAt: new Date(),
         heartbeatAt: new Date(),
       },
@@ -203,7 +220,7 @@ export async function processBackfillJob(jobId: string) {
       status: "running",
       startedAt: job.startedAt ?? new Date(),
       heartbeatAt: new Date(),
-      message: `服务端正在执行补拉任务，准备检查 ${targetDates[job.currentIndex] ?? "当前日期"}`,
+      message: buildJobMessage(`服务端正在执行补拉任务，准备检查 ${targetDates[job.currentIndex] ?? "当前日期"}`, updatedFields),
       lastError: null,
     },
   })
@@ -218,7 +235,7 @@ export async function processBackfillJob(jobId: string) {
         where: { id: jobId },
         data: {
           heartbeatAt: new Date(),
-          message: `正在检查 ${date}（${index + 1}/${targetDates.length}）：抓取远端并比对缺口`,
+          message: buildJobMessage(`正在检查 ${date}（${index + 1}/${targetDates.length}）：抓取远端并比对缺口`, updatedFields),
         },
       })
       const result = await syncGarminDateForUser({
@@ -227,6 +244,7 @@ export async function processBackfillJob(jobId: string) {
         garminPassword: job.user.garminPassword,
         date,
       })
+      updatedFields = mergeUpdatedFields(updatedFields, result.updatedFields)
       if (result.dataChanged) {
         syncedDates.push(date)
       } else {
@@ -236,9 +254,10 @@ export async function processBackfillJob(jobId: string) {
         where: { id: jobId },
         data: {
           heartbeatAt: new Date(),
-          message: result.dataChanged
-            ? `${date} 已补齐缺口，继续检查下一天`
-            : `${date} 无新增差异，已跳过`,
+          message: buildJobMessage(
+            result.dataChanged ? `${date} 已补齐缺口，继续检查下一天` : `${date} 无新增差异，已跳过`,
+            updatedFields
+          ),
         },
       })
     } catch (error: unknown) {
@@ -248,7 +267,7 @@ export async function processBackfillJob(jobId: string) {
         data: {
           lastError: error instanceof Error ? error.message : "补拉失败",
           heartbeatAt: new Date(),
-          message: `${date} 检查失败，继续后续日期`,
+          message: buildJobMessage(`${date} 检查失败，继续后续日期`, updatedFields),
         },
       })
     }
@@ -265,11 +284,14 @@ export async function processBackfillJob(jobId: string) {
       skippedDates: toJsonArray(skippedDates),
       failedDates: toJsonArray(failedDates),
       status: done ? "completed" : "running",
-      message: done
-        ? failedDates.length > 0
-          ? `比对完成：补齐 ${syncedDates.length} 天，跳过 ${skippedDates.length} 天，失败 ${failedDates.length} 天`
-          : `比对完成：补齐 ${syncedDates.length} 天，跳过 ${skippedDates.length} 天`
-        : `比对进行中：${cursor}/${targetDates.length}`,
+      message: buildJobMessage(
+        done
+          ? failedDates.length > 0
+            ? `比对完成：补齐 ${syncedDates.length} 天，跳过 ${skippedDates.length} 天，失败 ${failedDates.length} 天`
+            : `比对完成：补齐 ${syncedDates.length} 天，跳过 ${skippedDates.length} 天`
+          : `比对进行中：${cursor}/${targetDates.length}`,
+        updatedFields
+      ),
       finishedAt: done ? new Date() : null,
       heartbeatAt: new Date(),
     },

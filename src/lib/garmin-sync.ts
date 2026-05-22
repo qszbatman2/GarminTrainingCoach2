@@ -21,6 +21,7 @@ type SyncResult = {
   incompleteActivitiesCount: number
   dataChanged: boolean
   activityChangesCount: number
+  updatedFields: string[]
 }
 
 const REQUIRED_DAILY_KEYS = [
@@ -29,12 +30,38 @@ const REQUIRED_DAILY_KEYS = [
   "hrv",
   "stress",
   "heart_rates",
+  "body_battery",
   "daily_steps",
   "training_readiness",
 ]
 
 const REQUIRED_ACTIVITY_KEYS = ["details", "splits", "split_summaries", "hr_in_timezones"]
 const GARMIN_FETCH_TIMEOUT_MS = 45_000
+const DAILY_UPDATE_LABELS: Record<string, string[]> = {
+  stats: ["静息心率/压力/热量"],
+  sleep: ["睡眠"],
+  hrv: ["HRV"],
+  stress: ["压力"],
+  heart_rates: ["心率分时"],
+  body_battery: ["Body Battery"],
+  daily_steps: ["步数"],
+  steps: ["步数"],
+  training_readiness: ["训练准备度"],
+  morning_training_readiness: ["训练准备度"],
+  body_composition: ["体重/身体成分"],
+  blood_oxygen: ["血氧"],
+  respiration: ["呼吸频率"],
+  intensity_minutes: ["强度分钟"],
+  floors: ["爬楼层数"],
+  max_metrics: ["VO2 Max"],
+  training_status: ["训练负荷"],
+  training_status_aggregated: ["训练负荷"],
+  user_profile: ["乳酸阈值心率"],
+  lactate_threshold: ["乳酸阈值心率"],
+  endurance_score: ["耐力分数"],
+  hill_score: ["爬坡分数"],
+  running_tolerance: ["跑步耐受"],
+}
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -81,6 +108,32 @@ function normalizeWeightKg(value: number | null) {
   }
 
   return value > 500 ? value / 1000 : value
+}
+
+function dedupeLabels(labels: string[]) {
+  return [...new Set(labels.filter(Boolean))]
+}
+
+function collectUpdatedMetricLabels(existing: unknown, incoming: Record<string, unknown>) {
+  const existingRecord = asRecord(existing) ?? {}
+  const labels: string[] = []
+
+  for (const [key, fieldLabels] of Object.entries(DAILY_UPDATE_LABELS)) {
+    const result = mergeGapData(existingRecord[key], incoming[key])
+    if (result.changed) {
+      labels.push(...fieldLabels)
+    }
+  }
+
+  return dedupeLabels(labels)
+}
+
+export function mergeUpdatedFields(...fieldGroups: string[][]) {
+  return dedupeLabels(fieldGroups.flat())
+}
+
+export function formatUpdatedFieldsSummary(updatedFields: string[]) {
+  return updatedFields.length > 0 ? `已更新字段：${updatedFields.join("、")}` : "未发现新增字段"
 }
 
 function hasMeaningfulValue(value: unknown): boolean {
@@ -300,6 +353,7 @@ export async function syncGarminDateForUser({ userId, garminEmail, garminPasswor
 
   const data = await fetchGarminPayload(garminEmail, garminPassword, date)
   const remoteMetrics = asRecord(data.daily_metrics) ?? {}
+  const metricUpdatedFields = collectUpdatedMetricLabels(existingMetric?.raw, remoteMetrics)
   const activities = Array.isArray(data.activities) ? data.activities : []
   const metricMerge = mergeGapData(existingMetric?.raw, remoteMetrics)
   const mergedMetricRaw = (asRecord(metricMerge.value) ?? remoteMetrics) as Prisma.InputJsonValue
@@ -391,6 +445,8 @@ export async function syncGarminDateForUser({ userId, garminEmail, garminPasswor
     }
   }
 
+  const updatedFields = mergeUpdatedFields(metricUpdatedFields, activityChangesCount > 0 ? ["运动活动明细"] : [])
+
   return {
     metricId: savedMetric.id,
     activitiesCount: activities.length,
@@ -398,5 +454,6 @@ export async function syncGarminDateForUser({ userId, garminEmail, garminPasswor
     incompleteActivitiesCount,
     dataChanged: shouldWriteMetric || activityChangesCount > 0,
     activityChangesCount,
+    updatedFields,
   }
 }

@@ -65,6 +65,7 @@ export async function POST(request: Request) {
       incompleteActivitiesCount: syncResult.incompleteActivitiesCount,
       dataChanged: syncResult.dataChanged,
       activityChangesCount: syncResult.activityChangesCount,
+      updatedFields: syncResult.updatedFields,
     })
   } catch (error: unknown) {
     console.error("[Trae] Fix: API Error in garmin-sync:", error)
