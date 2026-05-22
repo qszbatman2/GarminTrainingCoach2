@@ -72,6 +72,12 @@ type TrendGroupSectionProps = {
   defaultOpen?: boolean
 }
 
+type InsightCard = {
+  title: string
+  value: string
+  detail: string
+}
+
 function formatDistance(distance: number | null) {
   if (!distance) {
     return "--"
@@ -94,6 +100,32 @@ function formatDuration(duration: number | null) {
   }
 
   return `${hours}h ${minutes}m`
+}
+
+function formatChange(value: number | null, unit = "", digits = 0) {
+  if (value == null || Number.isNaN(value)) {
+    return "暂无对比"
+  }
+
+  const prefix = value > 0 ? "+" : value < 0 ? "-" : ""
+  return `${prefix}${Math.abs(value).toFixed(digits)}${unit}`
+}
+
+function formatValue(value: number | null, unit = "", digits = 0) {
+  if (value == null || Number.isNaN(value)) {
+    return "--"
+  }
+
+  return `${value.toFixed(digits)}${unit}`
+}
+
+function average(values: Array<number | null | undefined>) {
+  const numbers = values.filter((value): value is number => typeof value === "number" && Number.isFinite(value))
+  if (numbers.length === 0) {
+    return null
+  }
+
+  return numbers.reduce((sum, value) => sum + value, 0) / numbers.length
 }
 
 function getTopLevelKeys(raw: unknown) {
@@ -191,6 +223,10 @@ function jsonArrayCount(value: unknown) {
   return Array.isArray(value) ? value.length : 0
 }
 
+function getActivityDays(activities: ActivityItem[]) {
+  return new Set(activities.map((activity) => activity.date)).size
+}
+
 function DetailChart({ title, unit, data }: { title: string; unit: string; data: NumericPoint[] }) {
   const polyline = buildPolyline(data)
 
@@ -249,6 +285,13 @@ export function DataExplorer({ userEmail, metrics, activities, initialBackfillJo
       }),
     [metrics]
   )
+  const metricsAsc = useMemo(() => [...enrichedMetrics].sort((a, b) => a.date.localeCompare(b.date)), [enrichedMetrics])
+  const latestMetric = enrichedMetrics[0] ?? null
+  const last7Metrics = useMemo(() => metricsAsc.slice(-7), [metricsAsc])
+  const previous7Metrics = useMemo(() => metricsAsc.slice(-14, -7), [metricsAsc])
+  const last30Metrics = useMemo(() => metricsAsc.slice(-30), [metricsAsc])
+  const last30Dates = useMemo(() => new Set(last30Metrics.map((metric) => metric.date)), [last30Metrics])
+  const last30Activities = useMemo(() => activities.filter((activity) => last30Dates.has(activity.date)), [activities, last30Dates])
 
   const selectedMetric = enrichedMetrics.find((metric) => metric.date === selectedDate) ?? enrichedMetrics[0] ?? null
   const latestActivities = activities.slice(0, 12)
@@ -271,6 +314,78 @@ export function DataExplorer({ userEmail, metrics, activities, initialBackfillJo
   const heartRateSeries = selectedMetric ? getHeartRateSeries(selectedMetric.raw) : []
   const stressSeries = selectedMetric ? getStressSeries(selectedMetric.raw) : []
   const bodyBatterySeries = selectedMetric ? getBodyBatterySeries(selectedMetric.raw) : []
+  const overviewCards = useMemo<InsightCard[]>(
+    () => [
+      {
+        title: "最近 7 天睡眠评分均值",
+        value: formatValue(average(last7Metrics.map((metric) => metric.sleepScore)), "", 0),
+        detail: `较前 7 天 ${formatChange(
+          (() => {
+            const current = average(last7Metrics.map((metric) => metric.sleepScore))
+            const previous = average(previous7Metrics.map((metric) => metric.sleepScore))
+            return current != null && previous != null ? current - previous : null
+          })(),
+          "",
+          0
+        )}`,
+      },
+      {
+        title: "最近 7 天 HRV 均值",
+        value: formatValue(average(last7Metrics.map((metric) => metric.hrv)), " ms", 0),
+        detail: `较前 7 天 ${formatChange(
+          (() => {
+            const current = average(last7Metrics.map((metric) => metric.hrv))
+            const previous = average(previous7Metrics.map((metric) => metric.hrv))
+            return current != null && previous != null ? current - previous : null
+          })(),
+          " ms",
+          0
+        )}`,
+      },
+      {
+        title: "最近 7 天步数均值",
+        value: formatValue(average(last7Metrics.map((metric) => metric.steps)), "", 0),
+        detail: `${getActivityDays(last30Activities)} 天有活动，近 30 天共 ${activities.length} 条活动`,
+      },
+      {
+        title: "最近 30 天覆盖率",
+        value: `${last30Metrics.length}/30`,
+        detail: latestMetric ? `最新同步日 ${latestMetric.date}` : "暂无同步数据",
+      },
+    ],
+    [activities.length, last30Activities, last30Metrics.length, last7Metrics, latestMetric, previous7Metrics]
+  )
+  const keyTakeaways = useMemo(
+    () => [
+      {
+        title: "恢复状态",
+        content:
+          average(last7Metrics.map((metric) => metric.sleepScore)) != null
+            ? `最近 7 天睡眠评分均值 ${formatValue(average(last7Metrics.map((metric) => metric.sleepScore)), "", 0)}，HRV 均值 ${formatValue(
+                average(last7Metrics.map((metric) => metric.hrv)),
+                " ms",
+                0
+              )}。`
+            : "最近 7 天恢复类数据仍偏少，建议先补拉后再判断趋势。",
+      },
+      {
+        title: "心肺负荷",
+        content:
+          average(last7Metrics.map((metric) => metric.restingHr)) != null
+            ? `最近 7 天静息心率均值 ${formatValue(average(last7Metrics.map((metric) => metric.restingHr)), " bpm", 0)}，平均压力 ${formatValue(
+                average(last7Metrics.map((metric) => metric.stress)),
+                "",
+                0
+              )}。`
+            : "当前静息心率或压力样本不足，暂时无法形成稳定判断。",
+      },
+      {
+        title: "活动节奏",
+        content: `近 30 天已同步 ${last30Metrics.length} 天 Daily，记录到 ${last30Activities.length} 条活动，覆盖 ${getActivityDays(last30Activities)} 个活动日。`,
+      },
+    ],
+    [last30Activities, last30Metrics.length, last7Metrics]
+  )
 
   useEffect(() => {
     if (!backfillJob || !["pending", "running"].includes(backfillJob.status)) {
@@ -328,50 +443,95 @@ export function DataExplorer({ userEmail, metrics, activities, initialBackfillJo
 
   return (
     <>
-      <section className="grid gap-4 md:grid-cols-4">
-        <article className="rounded-[1.75rem] border border-slate-200 bg-white p-6 shadow-[0_18px_50px_rgba(15,23,42,0.07)]">
-          <div className="text-sm text-slate-500">当前账号</div>
-          <div className="mt-3 break-all text-2xl font-semibold tracking-tight">{userEmail}</div>
+      <section className="grid gap-6 xl:grid-cols-[1.25fr_0.75fr]">
+        <article className="rounded-[2rem] border border-slate-200 bg-white p-7 shadow-[0_18px_50px_rgba(15,23,42,0.07)]">
+          <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <div className="text-xs uppercase tracking-[0.25em] text-cyan-700">Executive Summary</div>
+              <h2 className="mt-3 text-3xl font-semibold tracking-tight text-slate-950">先看关键结论，再下钻趋势和单日详情</h2>
+              <p className="mt-3 max-w-3xl text-sm leading-7 text-slate-500">
+                这个页面现在优先回答 3 个问题：最近状态如何、关键指标怎么变化、数据覆盖是否足够支撑判断。
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-3">
+              <Link
+                className="rounded-full border border-slate-200 bg-white px-5 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+                href="/data/calendar"
+              >
+                查看数据日历
+              </Link>
+              <button
+                className="rounded-full bg-slate-950 px-5 py-3 text-sm font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+                disabled={backfillLoading || ["pending", "running"].includes(backfillJob?.status ?? "")}
+                onClick={handleBackfill}
+                type="button"
+              >
+                {backfillLoading ? "创建任务中..." : ["pending", "running"].includes(backfillJob?.status ?? "") ? "补拉任务执行中" : "补拉最近 30 天"}
+              </button>
+            </div>
+          </div>
+
+          <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            {overviewCards.map((card) => (
+              <article className="rounded-[1.5rem] border border-slate-200 bg-slate-50/70 p-5" key={card.title}>
+                <div className="text-sm text-slate-500">{card.title}</div>
+                <div className="mt-3 text-3xl font-semibold tracking-tight text-slate-950">{card.value}</div>
+                <div className="mt-2 text-sm text-slate-500">{card.detail}</div>
+              </article>
+            ))}
+          </div>
         </article>
-        <article className="rounded-[1.75rem] border border-slate-200 bg-white p-6 shadow-[0_18px_50px_rgba(15,23,42,0.07)]">
-          <div className="text-sm text-slate-500">每日快照</div>
-          <div className="mt-3 text-3xl font-semibold tracking-tight">{metrics.length}</div>
-        </article>
-        <article className="rounded-[1.75rem] border border-slate-200 bg-white p-6 shadow-[0_18px_50px_rgba(15,23,42,0.07)]">
-          <div className="text-sm text-slate-500">活动记录</div>
-          <div className="mt-3 text-3xl font-semibold tracking-tight">{activities.length}</div>
-        </article>
-        <article className="rounded-[1.75rem] border border-slate-200 bg-white p-6 shadow-[0_18px_50px_rgba(15,23,42,0.07)]">
-          <div className="text-sm text-slate-500">最近同步日期</div>
-          <div className="mt-3 text-3xl font-semibold tracking-tight">{metrics[0]?.date ?? "--"}</div>
+
+        <article className="rounded-[2rem] border border-slate-200 bg-white p-7 shadow-[0_18px_50px_rgba(15,23,42,0.07)]">
+          <div className="text-xs uppercase tracking-[0.25em] text-slate-400">Key Takeaways</div>
+          <div className="mt-4 space-y-4">
+            {keyTakeaways.map((item) => (
+              <div className="rounded-[1.5rem] border border-slate-200 bg-slate-50/80 p-5" key={item.title}>
+                <div className="text-sm font-semibold text-slate-900">{item.title}</div>
+                <p className="mt-2 text-sm leading-6 text-slate-500">{item.content}</p>
+              </div>
+            ))}
+          </div>
+          <div className="mt-4 rounded-[1.5rem] border border-dashed border-slate-200 px-5 py-4 text-sm text-slate-500">
+            当前账号：<span className="font-medium text-slate-700">{userEmail}</span>
+          </div>
         </article>
       </section>
 
       <section className="rounded-[1.75rem] border border-slate-200 bg-white p-6 shadow-[0_18px_50px_rgba(15,23,42,0.07)]">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
-            <h2 className="text-2xl font-semibold tracking-tight">补拉缺失/不完整数据</h2>
-            <p className="mt-2 text-sm text-slate-500">点击后先创建任务，随后由服务端分批执行；即使你切页面，任务也会继续，回来后仍能看到进度。</p>
-          </div>
-          <div className="flex flex-wrap gap-3">
-            <Link
-              className="rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
-              href="/data/calendar"
-            >
-              查看数据日历
-            </Link>
-            <button
-              className="rounded-2xl bg-slate-950 px-5 py-3 text-sm font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
-              disabled={backfillLoading || ["pending", "running"].includes(backfillJob?.status ?? "")}
-              onClick={handleBackfill}
-              type="button"
-            >
-              {backfillLoading ? "创建任务中..." : ["pending", "running"].includes(backfillJob?.status ?? "") ? "补拉任务执行中" : "一键补拉最近 30 天"}
-            </button>
+            <h2 className="text-2xl font-semibold tracking-tight">数据健康与补拉任务</h2>
+            <p className="mt-2 text-sm text-slate-500">这里看数据新鲜度、覆盖度和后台补拉执行状态，避免在图表区和操作区来回切换。</p>
           </div>
         </div>
 
         {backfillResult ? <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">{backfillResult}</div> : null}
+
+        <div className="mt-4 grid gap-4 md:grid-cols-4">
+          <div className="rounded-3xl bg-slate-50 px-4 py-4">
+            <div className="text-xs uppercase tracking-[0.2em] text-slate-400">Daily 快照</div>
+            <div className="mt-2 text-lg font-semibold">{metrics.length}</div>
+            <div className="mt-1 text-sm text-slate-500">最近 30 天覆盖 {last30Metrics.length}/30</div>
+          </div>
+          <div className="rounded-3xl bg-slate-50 px-4 py-4">
+            <div className="text-xs uppercase tracking-[0.2em] text-slate-400">活动记录</div>
+            <div className="mt-2 text-lg font-semibold">{activities.length}</div>
+            <div className="mt-1 text-sm text-slate-500">近 30 天活动日 {getActivityDays(last30Activities)}</div>
+          </div>
+          <div className="rounded-3xl bg-slate-50 px-4 py-4">
+            <div className="text-xs uppercase tracking-[0.2em] text-slate-400">最新同步日期</div>
+            <div className="mt-2 text-lg font-semibold">{latestMetric?.date ?? "--"}</div>
+            <div className="mt-1 text-sm text-slate-500">用于判断当前数据是否足够新</div>
+          </div>
+          <div className="rounded-3xl bg-slate-50 px-4 py-4">
+            <div className="text-xs uppercase tracking-[0.2em] text-slate-400">补拉状态</div>
+            <div className="mt-2 text-lg font-semibold">{backfillJob?.status ?? "idle"}</div>
+            <div className="mt-1 text-sm text-slate-500">
+              {backfillJob ? `${backfillJob.currentIndex}/${backfillJob.totalDates}` : "暂无后台补拉任务"}
+            </div>
+          </div>
+        </div>
 
         {backfillJob ? (
           <div className="mt-4 grid gap-4 md:grid-cols-4">
@@ -402,7 +562,7 @@ export function DataExplorer({ userEmail, metrics, activities, initialBackfillJo
       <section className="space-y-4">
         <div>
           <h2 className="text-2xl font-semibold tracking-tight">日级趋势图</h2>
-          <p className="mt-2 text-sm text-slate-500">按业务语义分类展示所有已解析出的日级指标，支持折叠查看；趋势日期已修正为从左到右递增。</p>
+          <p className="mt-2 text-sm text-slate-500">先用分组看整体状态，再进入单个指标。每张图都隐含了时间趋势、最新值和样本覆盖天数。</p>
         </div>
         <div className="space-y-4">
           {trendGroups.map((group, index) => (
@@ -420,8 +580,8 @@ export function DataExplorer({ userEmail, metrics, activities, initialBackfillJo
       <section className="space-y-4">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
-            <h2 className="text-2xl font-semibold tracking-tight">分时明细图</h2>
-            <p className="mt-2 text-sm text-slate-500">从单日 raw 数据里解析心率、压力、Body Battery 的时间序列，先把原本不可读的 JSON 转成图。</p>
+            <h2 className="text-2xl font-semibold tracking-tight">单日深度分析</h2>
+            <p className="mt-2 text-sm text-slate-500">当你想追某一天状态时，在这里看该日的核心指标和分时变化，不用直接啃 Raw JSON。</p>
           </div>
           <div className="flex flex-wrap gap-2">
             {enrichedMetrics.slice(0, 12).map((metric) => (
@@ -475,8 +635,8 @@ export function DataExplorer({ userEmail, metrics, activities, initialBackfillJo
 
       <section className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
         <article className="rounded-[1.75rem] border border-slate-200 bg-white p-6 shadow-[0_18px_50px_rgba(15,23,42,0.07)]">
-          <h2 className="text-2xl font-semibold tracking-tight">最近活动历史</h2>
-          <p className="mt-2 text-sm text-slate-500">结构化摘要放在表里，方便快速看已同步到了哪些活动。</p>
+          <h2 className="text-2xl font-semibold tracking-tight">活动摘要</h2>
+          <p className="mt-2 text-sm text-slate-500">先看活动列表确认训练记录是否到位，再决定是否补拉某些日期的活动详情。</p>
 
           <div className="mt-6 overflow-hidden rounded-3xl border border-slate-200">
             <div className="grid grid-cols-[1.4fr_0.8fr_0.8fr_1fr] bg-slate-50 px-5 py-3 text-xs uppercase tracking-[0.2em] text-slate-400">
@@ -504,19 +664,24 @@ export function DataExplorer({ userEmail, metrics, activities, initialBackfillJo
         </article>
 
         <article className="rounded-[1.75rem] border border-slate-200 bg-white p-6 shadow-[0_18px_50px_rgba(15,23,42,0.07)]">
-          <h2 className="text-2xl font-semibold tracking-tight">选中日期 Raw JSON</h2>
-          <p className="mt-2 text-sm text-slate-500">保留原始数据，便于继续验证字段和扩展图表。</p>
-          <div className="mt-4 text-xs text-slate-500">
-            顶层字段数：{getTopLevelKeys(selectedMetric?.raw).length}
-            {getTopLevelKeys(selectedMetric?.raw).length > 0
-              ? `（${getTopLevelKeys(selectedMetric?.raw)
-                  .slice(0, 16)
-                  .join(", ")}${getTopLevelKeys(selectedMetric?.raw).length > 16 ? ", ..." : ""}）`
-              : ""}
-          </div>
-          <pre className="mt-4 max-h-[42rem] overflow-auto rounded-2xl bg-slate-50 p-4 text-xs text-slate-700">
-            {selectedMetric?.raw ? JSON.stringify(selectedMetric.raw, null, 2) : "暂无"}
-          </pre>
+          <h2 className="text-2xl font-semibold tracking-tight">原始数据与字段核对</h2>
+          <p className="mt-2 text-sm text-slate-500">把 Raw JSON 收到页面末尾，只在你需要校验字段或扩展解析规则时再展开。</p>
+          <details className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+            <summary className="cursor-pointer list-none text-sm font-medium text-slate-700">
+              查看 {selectedMetric?.date ?? "当前日期"} Raw JSON
+            </summary>
+            <div className="mt-4 text-xs text-slate-500">
+              顶层字段数：{getTopLevelKeys(selectedMetric?.raw).length}
+              {getTopLevelKeys(selectedMetric?.raw).length > 0
+                ? `（${getTopLevelKeys(selectedMetric?.raw)
+                    .slice(0, 16)
+                    .join(", ")}${getTopLevelKeys(selectedMetric?.raw).length > 16 ? ", ..." : ""}）`
+                : ""}
+            </div>
+            <pre className="mt-4 max-h-[42rem] overflow-auto rounded-2xl bg-white p-4 text-xs text-slate-700">
+              {selectedMetric?.raw ? JSON.stringify(selectedMetric.raw, null, 2) : "暂无"}
+            </pre>
+          </details>
         </article>
       </section>
     </>
