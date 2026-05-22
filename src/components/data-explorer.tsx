@@ -4,7 +4,14 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useEffect, useMemo, useState } from "react"
 
-import { getBodyBatterySeries, getHeartRateSeries, getMetricDisplayValues, getStressSeries, type NumericPoint } from "@/lib/garmin-data"
+import {
+  buildDailyTrendGroups,
+  getBodyBatterySeries,
+  getHeartRateSeries,
+  getMetricDisplayValues,
+  getStressSeries,
+  type NumericPoint,
+} from "@/lib/garmin-data"
 
 type MetricItem = {
   id: string
@@ -56,6 +63,13 @@ type TrendCardProps = {
   subtitle: string
   unit: string
   data: NumericPoint[]
+}
+
+type TrendGroupSectionProps = {
+  title: string
+  description: string
+  metrics: Array<TrendCardProps & { key: string }>
+  defaultOpen?: boolean
 }
 
 function formatDistance(distance: number | null) {
@@ -134,7 +148,7 @@ function TrendCard({ title, subtitle, unit, data }: TrendCardProps) {
               stroke="rgb(8 145 178)"
               strokeLinecap="round"
               strokeLinejoin="round"
-              strokeWidth="3"
+              strokeWidth="1.5"
             />
           </svg>
           <div className="mt-3 flex items-center justify-between text-xs text-slate-400">
@@ -146,6 +160,30 @@ function TrendCard({ title, subtitle, unit, data }: TrendCardProps) {
         <div className="mt-8 rounded-3xl bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">至少需要 2 个数据点才会绘制趋势图</div>
       )}
     </article>
+  )
+}
+
+function TrendGroupSection({ title, description, metrics, defaultOpen = true }: TrendGroupSectionProps) {
+  const [open, setOpen] = useState(defaultOpen)
+
+  return (
+    <section className="rounded-[1.75rem] border border-slate-200 bg-white p-6 shadow-[0_18px_50px_rgba(15,23,42,0.07)]">
+      <button className="flex w-full items-start justify-between gap-4 text-left" onClick={() => setOpen((value) => !value)} type="button">
+        <div>
+          <h3 className="text-xl font-semibold tracking-tight">{title}</h3>
+          <p className="mt-2 text-sm text-slate-500">{description}</p>
+        </div>
+        <span className="rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-600">{open ? "收起" : "展开"}</span>
+      </button>
+
+      {open ? (
+        <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {metrics.map((metric) => (
+            <TrendCard data={metric.data} key={metric.key} subtitle={metric.subtitle} title={metric.title} unit={metric.unit} />
+          ))}
+        </div>
+      ) : null}
+    </section>
   )
 }
 
@@ -177,7 +215,7 @@ function DetailChart({ title, unit, data }: { title: string; unit: string; data:
               stroke="rgb(14 165 233)"
               strokeLinecap="round"
               strokeLinejoin="round"
-              strokeWidth="2.5"
+              strokeWidth="1.5"
             />
           </svg>
           <div className="mt-3 flex items-center justify-between text-xs text-slate-400">
@@ -215,53 +253,18 @@ export function DataExplorer({ userEmail, metrics, activities, initialBackfillJo
   const selectedMetric = enrichedMetrics.find((metric) => metric.date === selectedDate) ?? enrichedMetrics[0] ?? null
   const latestActivities = activities.slice(0, 12)
 
-  const trendCards = useMemo(
-    () => [
-      {
-        title: "睡眠评分趋势",
-        subtitle: `${enrichedMetrics.length} 天`,
-        unit: "",
-        data: enrichedMetrics
-          .filter((metric) => metric.sleepScore != null)
-          .map((metric) => ({ label: metric.date.slice(5), value: Number(metric.sleepScore) })),
-      },
-      {
-        title: "夜间 HRV 趋势",
-        subtitle: `${enrichedMetrics.length} 天`,
-        unit: "ms",
-        data: enrichedMetrics.filter((metric) => metric.hrv != null).map((metric) => ({ label: metric.date.slice(5), value: Number(metric.hrv) })),
-      },
-      {
-        title: "静息心率趋势",
-        subtitle: `${enrichedMetrics.length} 天`,
-        unit: "bpm",
-        data: enrichedMetrics
-          .filter((metric) => metric.restingHr != null)
-          .map((metric) => ({ label: metric.date.slice(5), value: Number(metric.restingHr) })),
-      },
-      {
-        title: "平均压力趋势",
-        subtitle: `${enrichedMetrics.length} 天`,
-        unit: "",
-        data: enrichedMetrics
-          .filter((metric) => metric.stress != null)
-          .map((metric) => ({ label: metric.date.slice(5), value: Number(metric.stress) })),
-      },
-      {
-        title: "步数趋势",
-        subtitle: `${enrichedMetrics.length} 天`,
-        unit: "steps",
-        data: enrichedMetrics.filter((metric) => metric.steps != null).map((metric) => ({ label: metric.date.slice(5), value: Number(metric.steps) })),
-      },
-      {
-        title: "训练准备度趋势",
-        subtitle: `${enrichedMetrics.length} 天`,
-        unit: "",
-        data: enrichedMetrics
-          .filter((metric) => metric.trainingReadiness != null)
-          .map((metric) => ({ label: metric.date.slice(5), value: Number(metric.trainingReadiness) })),
-      },
-    ],
+  const trendGroups = useMemo(
+    () =>
+      buildDailyTrendGroups(enrichedMetrics).map((group) => ({
+        ...group,
+        metrics: group.metrics.map((metric) => ({
+          key: metric.key,
+          title: metric.title,
+          subtitle: `${metric.data.length} 天`,
+          unit: metric.unit,
+          data: metric.data,
+        })),
+      })),
     [enrichedMetrics]
   )
 
@@ -399,11 +402,17 @@ export function DataExplorer({ userEmail, metrics, activities, initialBackfillJo
       <section className="space-y-4">
         <div>
           <h2 className="text-2xl font-semibold tracking-tight">日级趋势图</h2>
-          <p className="mt-2 text-sm text-slate-500">把已经同步到库里的关键恢复指标整理成按天可读的趋势图。</p>
+          <p className="mt-2 text-sm text-slate-500">按业务语义分类展示所有已解析出的日级指标，支持折叠查看；趋势日期已修正为从左到右递增。</p>
         </div>
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {trendCards.map((card) => (
-            <TrendCard key={card.title} {...card} />
+        <div className="space-y-4">
+          {trendGroups.map((group, index) => (
+            <TrendGroupSection
+              defaultOpen={index === 0}
+              description={group.description}
+              key={group.key}
+              metrics={group.metrics}
+              title={group.title}
+            />
           ))}
         </div>
       </section>
