@@ -16,7 +16,7 @@ type MetricSnapshot = {
   hrv: number | null
   restingHr: number | null
   stress: number | null
-  raw?: unknown
+  raw: unknown
 }
 
 type ActivitySnapshot = {
