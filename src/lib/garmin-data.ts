@@ -36,31 +36,57 @@ function asRecord(value: unknown): Record<string, unknown> | null {
   return value as Record<string, unknown>
 }
 
-function getByPath(source: unknown, path: string): unknown {
-  return path.split(".").reduce<unknown>((current, key) => {
+function getValuesByPath(source: unknown, path: string): unknown[] {
+  const segments = path.split(".")
+
+  function visit(current: unknown, index: number): unknown[] {
+    if (current == null) {
+      return []
+    }
+
+    if (index >= segments.length) {
+      return [current]
+    }
+
+    const key = segments[index]
+
     if (Array.isArray(current)) {
-      const index = Number(key)
-      if (Number.isInteger(index) && index >= 0) {
-        return current[index]
+      if (key === "*") {
+        return current.flatMap((item) => visit(item, index + 1))
       }
 
-      return undefined
+      const arrayIndex = Number(key)
+      if (Number.isInteger(arrayIndex) && arrayIndex >= 0) {
+        return visit(current[arrayIndex], index + 1)
+      }
+
+      // Garmin frequently returns arrays of day/device records. Keep traversing
+      // the same key across every element so callers do not need hard-coded indexes.
+      return current.flatMap((item) => visit(item, index))
     }
 
     const record = asRecord(current)
     if (!record) {
-      return undefined
+      return []
     }
 
-    return record[key]
-  }, source)
+    if (key === "*") {
+      return Object.values(record).flatMap((item) => visit(item, index + 1))
+    }
+
+    return visit(record[key], index + 1)
+  }
+
+  return visit(source, 0)
 }
 
 function firstNumber(paths: string[], source: unknown): number | null {
   for (const path of paths) {
-    const value = getByPath(source, path)
-    if (typeof value === "number" && Number.isFinite(value)) {
-      return value
+    const values = getValuesByPath(source, path)
+    for (const value of values) {
+      if (typeof value === "number" && Number.isFinite(value)) {
+        return value
+      }
     }
   }
 
@@ -82,13 +108,25 @@ export function getRawNumber(paths: string[], source: unknown) {
 
 function firstValue<T>(paths: string[], source: unknown): T | null {
   for (const path of paths) {
-    const value = getByPath(source, path)
-    if (value != null) {
-      return value as T
+    const values = getValuesByPath(source, path)
+    for (const value of values) {
+      if (value != null) {
+        return value as T
+      }
     }
   }
 
   return null
+}
+
+function deriveIntensityMinutes(moderateMinutes: number | null, vigorousMinutes: number | null) {
+  if (moderateMinutes == null && vigorousMinutes == null) {
+    return null
+  }
+
+  // Garmin goals often count vigorous minutes double; use the same fallback
+  // when only split minutes are available but a total intensity field is absent.
+  return (moderateMinutes ?? 0) + (vigorousMinutes ?? 0) * 2
 }
 
 function formatTimeLabel(date: Date) {
@@ -225,6 +263,109 @@ function normalizeSeries(source: unknown, valueKeys: string[]): NumericPoint[] {
 }
 
 export function getMetricDisplayValues(raw: unknown) {
+  const trainingReadiness = firstNumber(
+    [
+      "training_readiness.score",
+      "training_readiness.readinessScore",
+      "training_readiness.value",
+      "morning_training_readiness.score",
+      "morning_training_readiness.readinessScore",
+      "morning_training_readiness.value",
+    ],
+    raw
+  )
+
+  const bodyBatteryHigh = firstNumber(
+    [
+      "stats.bodyBatteryHighestValue",
+      "stats.bodyBatteryChargedValue",
+      "body_battery.bodyBatteryChargedValue",
+      "body_battery.bodyBatteryHighestValue",
+      "body_battery.charged",
+      "body_battery.maxBodyBattery",
+      "body_battery.highBodyBattery",
+    ],
+    raw
+  )
+
+  const bodyBatteryLow = firstNumber(
+    [
+      "stats.bodyBatteryLowestValue",
+      "stats.bodyBatteryDrainedValue",
+      "body_battery.bodyBatteryDrainedValue",
+      "body_battery.bodyBatteryLowestValue",
+      "body_battery.drained",
+      "body_battery.minBodyBattery",
+      "body_battery.lowBodyBattery",
+    ],
+    raw
+  )
+
+  const moderateIntensityMinutes = firstNumber(
+    [
+      "intensity_minutes.moderateIntensityMinutes",
+      "intensity_minutes.moderateMinutes",
+      "stats.moderateIntensityMinutes",
+    ],
+    raw
+  )
+
+  const vigorousIntensityMinutes = firstNumber(
+    [
+      "intensity_minutes.vigorousIntensityMinutes",
+      "intensity_minutes.vigorousMinutes",
+      "stats.vigorousIntensityMinutes",
+    ],
+    raw
+  )
+
+  const intensityMinutes =
+    firstNumber(
+      [
+        "intensity_minutes.totalIntensityMinutes",
+        "intensity_minutes.intensityMinutes",
+        "stats.activeTimeInMinutes",
+      ],
+      raw
+    ) ?? deriveIntensityMinutes(moderateIntensityMinutes, vigorousIntensityMinutes)
+
+  const acuteTrainingLoad = firstNumber(
+    [
+      "training_status_aggregated.acuteTrainingLoad",
+      "training_status.latestTrainingStatusData.*.acuteTrainingLoadDTO.dailyTrainingLoadAcute",
+      "training_status.mostRecentTrainingStatus.latestTrainingStatusData.*.acuteTrainingLoadDTO.dailyTrainingLoadAcute",
+      "training_status.acuteTrainingLoad",
+      "training_status.currentTrainingLoad",
+      "training_status.trainingLoad",
+    ],
+    raw
+  )
+
+  const chronicTrainingLoad = firstNumber(
+    [
+      "training_status_aggregated.chronicTrainingLoad",
+      "training_status.latestTrainingStatusData.*.acuteTrainingLoadDTO.dailyTrainingLoadChronic",
+      "training_status.mostRecentTrainingStatus.latestTrainingStatusData.*.acuteTrainingLoadDTO.dailyTrainingLoadChronic",
+      "training_status.chronicTrainingLoad",
+      "training_status.trainingLoadChronic",
+    ],
+    raw
+  )
+
+  const acuteChronicLoadRatio =
+    firstNumber(
+      [
+        "training_status_aggregated.acuteChronicWorkloadRatio",
+        "training_status.acuteChronicWorkloadRatio",
+        "training_status.acwr",
+        "training_status.loadRatio",
+      ],
+      raw
+    ) ??
+    (acuteTrainingLoad != null && chronicTrainingLoad != null && chronicTrainingLoad > 0
+      ? acuteTrainingLoad / chronicTrainingLoad
+      : null)
+
   return {
     weight: normalizeWeightKg(
       firstNumber(
@@ -238,16 +379,17 @@ export function getMetricDisplayValues(raw: unknown) {
       )
     ),
     steps: firstNumber(["daily_steps.totalSteps", "steps.totalSteps", "stats.totalSteps"], raw),
-    trainingReadiness: firstNumber(
-      ["training_readiness.score", "training_readiness.readinessScore", "morning_training_readiness.score"],
-      raw
-    ),
-    bodyBatteryHigh: firstNumber(
-      ["body_battery.bodyBatteryChargedValue", "body_battery.maxBodyBattery", "body_battery.highBodyBattery"],
-      raw
-    ),
+    trainingReadiness,
+    bodyBatteryHigh,
     sleepDurationHours: firstNumber(
-      ["sleep.sleepTimeSeconds", "sleep.totalSleepSeconds", "sleep.duration", "sleep.sleepDurationSeconds"],
+      [
+        "sleep.dailySleepDTO.sleepTimeSeconds",
+        "sleep.sleepTimeSeconds",
+        "sleep.totalSleepSeconds",
+        "sleep.duration",
+        "sleep.sleepDurationSeconds",
+        "stats.measurableAsleepDuration",
+      ],
       raw
     ),
     deepSleepHours: firstNumber(["sleep.dailySleepDTO.deepSleepSeconds", "sleep.deepSleepSeconds"], raw),
@@ -256,69 +398,70 @@ export function getMetricDisplayValues(raw: unknown) {
       ["sleep.dailySleepDTO.awakeCount", "sleep.awakeningsCount", "sleep.restlessMomentsCount", "sleep.sleepScores.awakeningsCount"],
       raw
     ),
-    awakeDurationMinutes: firstNumber(["sleep.awakeSleepSeconds", "sleep.awakeTimeSeconds", "sleep.awakeDurationInSeconds"], raw),
-    bodyBatteryLow: firstNumber(
-      ["body_battery.bodyBatteryDrainedValue", "body_battery.minBodyBattery", "body_battery.lowBodyBattery"],
+    awakeDurationMinutes: firstNumber(
+      [
+        "sleep.dailySleepDTO.awakeSleepSeconds",
+        "sleep.awakeSleepSeconds",
+        "sleep.awakeTimeSeconds",
+        "sleep.awakeDurationInSeconds",
+        "stats.measurableAwakeDuration",
+      ],
       raw
     ),
+    bodyBatteryLow,
     bloodOxygen: firstNumber(
-      ["blood_oxygen.avgSpo2", "blood_oxygen.averageSpo2", "blood_oxygen.averageValue", "blood_oxygen.value"],
+      [
+        "blood_oxygen.avgSpo2",
+        "blood_oxygen.averageSpo2",
+        "blood_oxygen.averageSpO2",
+        "blood_oxygen.averageValue",
+        "blood_oxygen.latestSpO2",
+        "blood_oxygen.value",
+        "stats.averageSpo2",
+        "stats.latestSpo2",
+      ],
       raw
     ),
-    restingCalories: firstNumber(["stats.bmrCalories", "stats.restingCalories"], raw),
+    restingCalories: firstNumber(["stats.bmrKilocalories", "stats.bmrCalories", "stats.restingCalories"], raw),
     activeCalories: firstNumber(["stats.activeKilocalories", "stats.activeCalories"], raw),
-    intensityMinutes: firstNumber(
-      ["intensity_minutes.moderateIntensityMinutes", "intensity_minutes.totalIntensityMinutes", "stats.activeTimeInMinutes"],
-      raw
-    ),
-    moderateIntensityMinutes: firstNumber(
-      ["intensity_minutes.moderateIntensityMinutes", "intensity_minutes.moderateMinutes"],
-      raw
-    ),
-    vigorousIntensityMinutes: firstNumber(
-      ["intensity_minutes.vigorousIntensityMinutes", "intensity_minutes.vigorousMinutes"],
-      raw
-    ),
-    floors: firstNumber(["floors.totalFloorsClimbed", "floors.floorsAscended", "stats.floorsClimbed"], raw),
+    intensityMinutes,
+    moderateIntensityMinutes,
+    vigorousIntensityMinutes,
+    floors: firstNumber(["stats.floorsAscended", "floors.totalFloorsClimbed", "floors.floorsAscended", "stats.floorsClimbed"], raw),
     sedentaryMinutes: firstNumber(
-      ["stats.inactiveTimeInSeconds", "stats.sedentaryTimeInSeconds", "steps.sedentarySeconds", "steps.totalSedentarySeconds"],
+      ["stats.sedentarySeconds", "stats.inactiveTimeInSeconds", "stats.sedentaryTimeInSeconds", "steps.sedentarySeconds", "steps.totalSedentarySeconds"],
       raw
     ),
-    respiration: firstNumber(["respiration.avgWakingRespirationValue", "respiration.averageRespiration", "respiration.value"], raw),
+    respiration: firstNumber(
+      [
+        "respiration.avgWakingRespirationValue",
+        "respiration.avgSleepRespirationValue",
+        "respiration.averageRespiration",
+        "respiration.value",
+        "stats.avgWakingRespirationValue",
+      ],
+      raw
+    ),
     enduranceScore: firstNumber(["endurance_score.score", "endurance_score.value"], raw),
     hillScore: firstNumber(["hill_score.score", "hill_score.value"], raw),
     runningTolerance: firstNumber(["running_tolerance.value", "running_tolerance.score"], raw),
-    vo2Max: firstNumber(["max_metrics.vo2Max", "max_metrics.cyclingVo2Max"], raw),
+    vo2Max: firstNumber(
+      [
+        "max_metrics.vo2Max",
+        "max_metrics.cyclingVo2Max",
+        "training_status.mostRecentVO2Max.generic.vo2MaxValue",
+        "training_status.mostRecentVO2Max.cycling.vo2MaxValue",
+      ],
+      raw
+    ),
     trainingStatusScore: firstNumber(["training_status.score", "training_status.value"], raw),
-    acuteTrainingLoad: firstNumber(
-      [
-        "training_status_aggregated.acuteTrainingLoad",
-        "training_status.acuteTrainingLoad",
-        "training_status.currentTrainingLoad",
-        "training_status.trainingLoad",
-      ],
-      raw
-    ),
-    chronicTrainingLoad: firstNumber(
-      [
-        "training_status_aggregated.chronicTrainingLoad",
-        "training_status.chronicTrainingLoad",
-        "training_status.trainingLoadChronic",
-      ],
-      raw
-    ),
-    acuteChronicLoadRatio: firstNumber(
-      [
-        "training_status_aggregated.acuteChronicWorkloadRatio",
-        "training_status.acuteChronicWorkloadRatio",
-        "training_status.acwr",
-        "training_status.loadRatio",
-      ],
-      raw
-    ),
+    acuteTrainingLoad,
+    chronicTrainingLoad,
+    acuteChronicLoadRatio,
     lowAerobicLoad: firstNumber(
       [
         "training_status_aggregated.lowAerobicTrainingLoad",
+        "training_status.mostRecentTrainingLoadBalance.metricsTrainingLoadBalanceDTOMap.*.monthlyLoadAerobicLow",
         "training_status.lowAerobicTrainingLoad",
         "training_status.trainingLoadBalance.lowAerobicTrainingLoad",
       ],
@@ -327,6 +470,7 @@ export function getMetricDisplayValues(raw: unknown) {
     highAerobicLoad: firstNumber(
       [
         "training_status_aggregated.highAerobicTrainingLoad",
+        "training_status.mostRecentTrainingLoadBalance.metricsTrainingLoadBalanceDTOMap.*.monthlyLoadAerobicHigh",
         "training_status.highAerobicTrainingLoad",
         "training_status.trainingLoadBalance.highAerobicTrainingLoad",
       ],
@@ -335,6 +479,7 @@ export function getMetricDisplayValues(raw: unknown) {
     anaerobicLoad: firstNumber(
       [
         "training_status_aggregated.anaerobicTrainingLoad",
+        "training_status.mostRecentTrainingLoadBalance.metricsTrainingLoadBalanceDTOMap.*.monthlyLoadAnaerobic",
         "training_status.anaerobicTrainingLoad",
         "training_status.trainingLoadBalance.anaerobicTrainingLoad",
       ],
@@ -345,6 +490,7 @@ export function getMetricDisplayValues(raw: unknown) {
         "training_status_aggregated.recoveryTime",
         "training_status.recoveryTime",
         "training_status.recoveryHours",
+        "training_status.mostRecentTrainingStatus.latestTrainingStatusData.*.recoveryTime",
       ],
       raw
     ),
@@ -352,10 +498,12 @@ export function getMetricDisplayValues(raw: unknown) {
       [
         "user_profile.userData.lactateThresholdHeartRate",
         "user_profile.userData.runningLactateThresholdHeartRate",
-        "lactate_threshold.0.hearRate",
-        "lactate_threshold.1.hearRate",
-        "lactate_threshold.0.heartRateCycling",
-        "lactate_threshold.1.heartRateCycling",
+        "lactate_threshold.speed_and_heart_rate.heartRate",
+        "lactate_threshold.speed_and_heart_rate.hearRate",
+        "lactate_threshold.speed_and_heart_rate.heartRateCycling",
+        "lactate_threshold.heartRate",
+        "lactate_threshold.hearRate",
+        "lactate_threshold.heartRateCycling",
       ],
       raw
     ),
@@ -474,7 +622,13 @@ export const DAILY_TREND_GROUPS: TrendMetricGroup[] = [
         source: "raw",
         paths: ["body_composition.dateWeightList.0.weight", "body_composition.totalAverage.weight", "body_composition.weight"],
       },
-      { key: "sleepDurationHours", title: "睡眠时长", unit: "h", source: "raw", paths: ["sleep.sleepTimeSeconds", "sleep.totalSleepSeconds"] },
+      {
+        key: "sleepDurationHours",
+        title: "睡眠时长",
+        unit: "h",
+        source: "raw",
+        paths: ["sleep.dailySleepDTO.sleepTimeSeconds", "sleep.sleepTimeSeconds", "sleep.totalSleepSeconds", "stats.measurableAsleepDuration"],
+      },
       { key: "deepSleepHours", title: "深度睡眠", unit: "h", source: "raw", paths: ["sleep.dailySleepDTO.deepSleepSeconds", "sleep.deepSleepSeconds"] },
       { key: "remSleepHours", title: "REM 睡眠", unit: "h", source: "raw", paths: ["sleep.dailySleepDTO.remSleepSeconds", "sleep.remSleepSeconds"] },
       {
@@ -484,28 +638,61 @@ export const DAILY_TREND_GROUPS: TrendMetricGroup[] = [
         source: "raw",
         paths: ["sleep.dailySleepDTO.awakeCount", "sleep.awakeningsCount", "sleep.restlessMomentsCount"],
       },
-      { key: "awakeDurationMinutes", title: "清醒时长", unit: "min", source: "raw", paths: ["sleep.awakeSleepSeconds", "sleep.awakeTimeSeconds"] },
+      {
+        key: "awakeDurationMinutes",
+        title: "清醒时长",
+        unit: "min",
+        source: "raw",
+        paths: [
+          "sleep.dailySleepDTO.awakeSleepSeconds",
+          "sleep.awakeSleepSeconds",
+          "sleep.awakeTimeSeconds",
+          "stats.measurableAwakeDuration",
+        ],
+      },
       { key: "hrv", title: "夜间 HRV", unit: "ms", source: "stored", storedKey: "hrv" },
       {
         key: "trainingReadiness",
         title: "训练准备度",
         unit: "",
         source: "raw",
-        paths: ["training_readiness.score", "training_readiness.readinessScore", "morning_training_readiness.score"],
+        paths: [
+          "training_readiness.score",
+          "training_readiness.readinessScore",
+          "training_readiness.value",
+          "morning_training_readiness.score",
+          "morning_training_readiness.readinessScore",
+        ],
       },
       {
         key: "bodyBatteryHigh",
         title: "Body Battery 高点",
         unit: "",
         source: "raw",
-        paths: ["body_battery.bodyBatteryChargedValue", "body_battery.maxBodyBattery", "body_battery.highBodyBattery"],
+        paths: [
+          "stats.bodyBatteryHighestValue",
+          "stats.bodyBatteryChargedValue",
+          "body_battery.bodyBatteryChargedValue",
+          "body_battery.bodyBatteryHighestValue",
+          "body_battery.charged",
+          "body_battery.maxBodyBattery",
+          "body_battery.highBodyBattery",
+        ],
       },
       {
         key: "bodyBatteryLow",
         title: "Body Battery 低点",
         unit: "",
         source: "raw",
-        paths: ["body_battery.bodyBatteryDrainedValue", "body_battery.minBodyBattery", "body_battery.lowBodyBattery"],
+        paths: [
+          "stats.bodyBatteryLowestValue",
+          "stats.bodyBatteryDrainedValue",
+          "body_battery.bodyBatteryDrainedValue",
+          "body_battery.bodyBatteryLowestValue",
+          "body_battery.drained",
+          "body_battery.minBodyBattery",
+          "body_battery.lowBodyBattery",
+        ],
       },
     ],
   },
@@ -521,14 +708,27 @@ export const DAILY_TREND_GROUPS: TrendMetricGroup[] = [
         title: "血氧",
         unit: "%",
         source: "raw",
-        paths: ["blood_oxygen.avgSpo2", "blood_oxygen.averageSpo2", "blood_oxygen.averageValue", "blood_oxygen.value"],
+        paths: [
+          "blood_oxygen.avgSpo2",
+          "blood_oxygen.averageSpo2",
+          "blood_oxygen.averageSpO2",
+          "blood_oxygen.averageValue",
+          "blood_oxygen.latestSpO2",
+          "stats.averageSpo2",
+        ],
       },
       {
         key: "respiration",
         title: "呼吸频率",
         unit: "brpm",
         source: "raw",
-        paths: ["respiration.avgWakingRespirationValue", "respiration.averageRespiration", "respiration.value"],
+        paths: [
+          "respiration.avgWakingRespirationValue",
+          "respiration.avgSleepRespirationValue",
+          "respiration.averageRespiration",
+          "respiration.value",
+          "stats.avgWakingRespirationValue",
+        ],
       },
     ],
   },
@@ -543,32 +743,39 @@ export const DAILY_TREND_GROUPS: TrendMetricGroup[] = [
         title: "强度分钟",
         unit: "min",
         source: "raw",
-        paths: ["intensity_minutes.moderateIntensityMinutes", "intensity_minutes.totalIntensityMinutes", "stats.activeTimeInMinutes"],
+        paths: [
+          "intensity_minutes.totalIntensityMinutes",
+          "intensity_minutes.intensityMinutes",
+          "intensity_minutes.moderateIntensityMinutes",
+          "stats.moderateIntensityMinutes",
+          "stats.vigorousIntensityMinutes",
+          "stats.activeTimeInMinutes",
+        ],
       },
       {
         key: "moderateIntensityMinutes",
         title: "中等强度分钟",
         unit: "min",
         source: "raw",
-        paths: ["intensity_minutes.moderateIntensityMinutes", "intensity_minutes.moderateMinutes"],
+        paths: ["intensity_minutes.moderateIntensityMinutes", "intensity_minutes.moderateMinutes", "stats.moderateIntensityMinutes"],
       },
       {
         key: "vigorousIntensityMinutes",
         title: "高强度分钟",
         unit: "min",
         source: "raw",
-        paths: ["intensity_minutes.vigorousIntensityMinutes", "intensity_minutes.vigorousMinutes"],
+        paths: ["intensity_minutes.vigorousIntensityMinutes", "intensity_minutes.vigorousMinutes", "stats.vigorousIntensityMinutes"],
       },
-      { key: "floors", title: "爬楼层数", unit: "floors", source: "raw", paths: ["floors.totalFloorsClimbed", "floors.floorsAscended"] },
+      { key: "floors", title: "爬楼层数", unit: "floors", source: "raw", paths: ["stats.floorsAscended", "floors.totalFloorsClimbed", "floors.floorsAscended"] },
       { key: "activeCalories", title: "活动消耗", unit: "kcal", source: "raw", paths: ["stats.activeKilocalories", "stats.activeCalories"] },
       {
         key: "sedentaryMinutes",
         title: "久坐时长",
         unit: "min",
         source: "raw",
-        paths: ["stats.inactiveTimeInSeconds", "stats.sedentaryTimeInSeconds", "steps.sedentarySeconds"],
+        paths: ["stats.sedentarySeconds", "stats.inactiveTimeInSeconds", "stats.sedentaryTimeInSeconds", "steps.sedentarySeconds"],
       },
-      { key: "restingCalories", title: "静息消耗", unit: "kcal", source: "raw", paths: ["stats.bmrCalories", "stats.restingCalories"] },
+      { key: "restingCalories", title: "静息消耗", unit: "kcal", source: "raw", paths: ["stats.bmrKilocalories", "stats.bmrCalories", "stats.restingCalories"] },
       {
         key: "acuteTrainingLoad",
         title: "7 天急性负荷",
@@ -576,6 +783,8 @@ export const DAILY_TREND_GROUPS: TrendMetricGroup[] = [
         source: "raw",
         paths: [
           "training_status_aggregated.acuteTrainingLoad",
+          "training_status.latestTrainingStatusData.*.acuteTrainingLoadDTO.dailyTrainingLoadAcute",
+          "training_status.mostRecentTrainingStatus.latestTrainingStatusData.*.acuteTrainingLoadDTO.dailyTrainingLoadAcute",
           "training_status.acuteTrainingLoad",
           "training_status.currentTrainingLoad",
         ],
@@ -587,6 +796,8 @@ export const DAILY_TREND_GROUPS: TrendMetricGroup[] = [
         source: "raw",
         paths: [
           "training_status_aggregated.chronicTrainingLoad",
+          "training_status.latestTrainingStatusData.*.acuteTrainingLoadDTO.dailyTrainingLoadChronic",
+          "training_status.mostRecentTrainingStatus.latestTrainingStatusData.*.acuteTrainingLoadDTO.dailyTrainingLoadChronic",
           "training_status.chronicTrainingLoad",
           "training_status.trainingLoadChronic",
         ],
@@ -610,6 +821,7 @@ export const DAILY_TREND_GROUPS: TrendMetricGroup[] = [
         source: "raw",
         paths: [
           "training_status_aggregated.lowAerobicTrainingLoad",
+          "training_status.mostRecentTrainingLoadBalance.metricsTrainingLoadBalanceDTOMap.*.monthlyLoadAerobicLow",
           "training_status.lowAerobicTrainingLoad",
           "training_status.trainingLoadBalance.lowAerobicTrainingLoad",
         ],
@@ -621,6 +833,7 @@ export const DAILY_TREND_GROUPS: TrendMetricGroup[] = [
         source: "raw",
         paths: [
           "training_status_aggregated.highAerobicTrainingLoad",
+          "training_status.mostRecentTrainingLoadBalance.metricsTrainingLoadBalanceDTOMap.*.monthlyLoadAerobicHigh",
           "training_status.highAerobicTrainingLoad",
           "training_status.trainingLoadBalance.highAerobicTrainingLoad",
         ],
@@ -632,6 +845,7 @@ export const DAILY_TREND_GROUPS: TrendMetricGroup[] = [
         source: "raw",
         paths: [
           "training_status_aggregated.anaerobicTrainingLoad",
+          "training_status.mostRecentTrainingLoadBalance.metricsTrainingLoadBalanceDTOMap.*.monthlyLoadAnaerobic",
           "training_status.anaerobicTrainingLoad",
           "training_status.trainingLoadBalance.anaerobicTrainingLoad",
         ],
@@ -641,12 +855,28 @@ export const DAILY_TREND_GROUPS: TrendMetricGroup[] = [
         title: "建议恢复时长",
         unit: "h",
         source: "raw",
-        paths: ["training_status_aggregated.recoveryTime", "training_status.recoveryTime", "training_status.recoveryHours"],
+        paths: [
+          "training_status_aggregated.recoveryTime",
+          "training_status.recoveryTime",
+          "training_status.recoveryHours",
+          "training_status.mostRecentTrainingStatus.latestTrainingStatusData.*.recoveryTime",
+        ],
       },
       { key: "enduranceScore", title: "耐力分数", unit: "", source: "raw", paths: ["endurance_score.score", "endurance_score.value"] },
       { key: "hillScore", title: "爬坡分数", unit: "", source: "raw", paths: ["hill_score.score", "hill_score.value"] },
       { key: "runningTolerance", title: "跑步耐受", unit: "", source: "raw", paths: ["running_tolerance.value", "running_tolerance.score"] },
-      { key: "vo2Max", title: "VO2 Max", unit: "", source: "raw", paths: ["max_metrics.vo2Max", "max_metrics.cyclingVo2Max"] },
+      {
+        key: "vo2Max",
+        title: "VO2 Max",
+        unit: "",
+        source: "raw",
+        paths: [
+          "max_metrics.vo2Max",
+          "max_metrics.cyclingVo2Max",
+          "training_status.mostRecentVO2Max.generic.vo2MaxValue",
+          "training_status.mostRecentVO2Max.cycling.vo2MaxValue",
+        ],
+      },
       {
         key: "lactateThresholdHr",
         title: "乳酸阈值心率",
@@ -655,8 +885,10 @@ export const DAILY_TREND_GROUPS: TrendMetricGroup[] = [
         paths: [
           "user_profile.userData.lactateThresholdHeartRate",
           "user_profile.userData.runningLactateThresholdHeartRate",
-          "lactate_threshold.0.hearRate",
-          "lactate_threshold.1.hearRate",
+          "lactate_threshold.speed_and_heart_rate.heartRate",
+          "lactate_threshold.speed_and_heart_rate.hearRate",
+          "lactate_threshold.heartRate",
+          "lactate_threshold.hearRate",
         ],
       },
       { key: "trainingStatusScore", title: "训练状态分", unit: "", source: "raw", paths: ["training_status.score", "training_status.value"] },
@@ -680,22 +912,28 @@ export function buildDailyTrendGroups(metrics: DailyTrendSource[]) {
                   ? getRawNumber(metric.paths, item.raw)
                   : null
 
-            if (rawValue == null || !Number.isFinite(rawValue)) {
+            const fallbackValue =
+              rawValue ??
+              (metric.source === "raw"
+                ? (getMetricDisplayValues(item.raw) as Record<string, number | null>)[metric.key] ?? null
+                : null)
+
+            if (fallbackValue == null || !Number.isFinite(fallbackValue)) {
               return null
             }
 
             const normalizedValue =
               metric.key === "sleepDurationHours"
-                ? Number(rawValue) / 3600
+                ? Number(fallbackValue) / 3600
                 : metric.key === "deepSleepHours" || metric.key === "remSleepHours"
-                  ? Number(rawValue) / 3600
+                  ? Number(fallbackValue) / 3600
                 : metric.key === "awakeDurationMinutes"
-                  ? Number(rawValue) / 60
+                  ? Number(fallbackValue) / 60
                   : metric.key === "sedentaryMinutes"
-                    ? Number(rawValue) > 1440 ? Number(rawValue) / 60 : Number(rawValue)
+                    ? Number(fallbackValue) > 1440 ? Number(fallbackValue) / 60 : Number(fallbackValue)
                     : metric.key === "recoveryHours"
-                      ? Number(rawValue) > 240 ? Number(rawValue) / 3600 : Number(rawValue)
-                  : Number(rawValue)
+                      ? Number(fallbackValue) > 240 ? Number(fallbackValue) / 3600 : Number(fallbackValue)
+                  : Number(fallbackValue)
 
             return {
               label: item.date.slice(5),
@@ -748,6 +986,15 @@ export function getStressSeries(raw: unknown) {
 }
 
 export function getBodyBatterySeries(raw: unknown) {
-  const source = firstValue(["body_battery.bodyBatteryValuesArray", "body_battery.bodyBatteryValues", "body_battery"], raw) ?? raw
+  const source =
+    firstValue(
+      [
+        "stress.bodyBatteryValuesArray",
+        "body_battery.bodyBatteryValuesArray",
+        "body_battery.bodyBatteryValues",
+        "body_battery",
+      ],
+      raw
+    ) ?? raw
   return normalizeSeries(source, ["bodyBattery", "value"])
 }
