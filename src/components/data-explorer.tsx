@@ -348,6 +348,19 @@ export function DataExplorer({ userEmail, metrics, activities, initialBackfillJo
         detail: `${getActivityDays(last30Activities)} 天有活动，近 30 天共 ${activities.length} 条活动`,
       },
       {
+        title: "最近 7 天体重均值",
+        value: formatValue(average(last7Metrics.map((metric) => metric.weight)), " kg", 1),
+        detail: `较前 7 天 ${formatChange(
+          (() => {
+            const current = average(last7Metrics.map((metric) => metric.weight))
+            const previous = average(previous7Metrics.map((metric) => metric.weight))
+            return current != null && previous != null ? current - previous : null
+          })(),
+          " kg",
+          1
+        )}`,
+      },
+      {
         title: "最近 30 天覆盖率",
         value: `${last30Metrics.length}/30`,
         detail: latestMetric ? `最新同步日 ${latestMetric.date}` : "暂无同步数据",
@@ -381,7 +394,18 @@ export function DataExplorer({ userEmail, metrics, activities, initialBackfillJo
       },
       {
         title: "活动节奏",
-        content: `近 30 天已同步 ${last30Metrics.length} 天 Daily，记录到 ${last30Activities.length} 条活动，覆盖 ${getActivityDays(last30Activities)} 个活动日。`,
+        content: `近 30 天已同步 ${last30Metrics.length} 天 Daily，记录到 ${last30Activities.length} 条活动，覆盖 ${getActivityDays(last30Activities)} 个活动日；最近 7 天强度分钟均值 ${formatValue(
+          average(last7Metrics.map((metric) => metric.intensityMinutes)),
+          " min",
+          0
+        )}。`,
+      },
+      {
+        title: "体重趋势",
+        content:
+          average(last7Metrics.map((metric) => metric.weight)) != null
+            ? `最近 7 天体重均值 ${formatValue(average(last7Metrics.map((metric) => metric.weight)), " kg", 1)}，可结合睡眠、HRV 与活动强度一起看恢复和负荷变化。`
+            : "当前还没有稳定的体重数据样本，建议同步包含体脂秤/手动称重的日期后再观察趋势。",
       },
     ],
     [last30Activities, last30Metrics.length, last7Metrics]
@@ -534,7 +558,7 @@ export function DataExplorer({ userEmail, metrics, activities, initialBackfillJo
         </div>
 
         {backfillJob ? (
-          <div className="mt-4 grid gap-4 md:grid-cols-4">
+          <div className="mt-4 grid gap-4 md:grid-cols-5">
             <div className="rounded-3xl bg-slate-50 px-4 py-4">
               <div className="text-xs uppercase tracking-[0.2em] text-slate-400">任务状态</div>
               <div className="mt-2 text-lg font-semibold">{backfillJob.status}</div>
@@ -552,6 +576,10 @@ export function DataExplorer({ userEmail, metrics, activities, initialBackfillJo
             <div className="rounded-3xl bg-slate-50 px-4 py-4">
               <div className="text-xs uppercase tracking-[0.2em] text-slate-400">失败日期</div>
               <div className="mt-2 text-lg font-semibold">{jsonArrayCount(backfillJob.failedDates)}</div>
+            </div>
+            <div className="rounded-3xl bg-slate-50 px-4 py-4">
+              <div className="text-xs uppercase tracking-[0.2em] text-slate-400">最近 7 天强度均值</div>
+              <div className="mt-2 text-lg font-semibold">{formatValue(average(last7Metrics.map((metric) => metric.intensityMinutes)), " min", 0)}</div>
             </div>
           </div>
         ) : null}
@@ -601,22 +629,34 @@ export function DataExplorer({ userEmail, metrics, activities, initialBackfillJo
 
         {selectedMetric ? (
           <>
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
               <article className="rounded-[1.75rem] border border-slate-200 bg-white p-5 shadow-[0_18px_50px_rgba(15,23,42,0.07)]">
                 <div className="text-sm text-slate-500">步数</div>
                 <div className="mt-2 text-2xl font-semibold">{selectedMetric.steps ?? "--"}</div>
+              </article>
+              <article className="rounded-[1.75rem] border border-slate-200 bg-white p-5 shadow-[0_18px_50px_rgba(15,23,42,0.07)]">
+                <div className="text-sm text-slate-500">体重</div>
+                <div className="mt-2 text-2xl font-semibold">{selectedMetric.weight != null ? `${selectedMetric.weight.toFixed(1)} kg` : "--"}</div>
               </article>
               <article className="rounded-[1.75rem] border border-slate-200 bg-white p-5 shadow-[0_18px_50px_rgba(15,23,42,0.07)]">
                 <div className="text-sm text-slate-500">训练准备度</div>
                 <div className="mt-2 text-2xl font-semibold">{selectedMetric.trainingReadiness ?? "--"}</div>
               </article>
               <article className="rounded-[1.75rem] border border-slate-200 bg-white p-5 shadow-[0_18px_50px_rgba(15,23,42,0.07)]">
-                <div className="text-sm text-slate-500">Body Battery High</div>
-                <div className="mt-2 text-2xl font-semibold">{selectedMetric.bodyBatteryHigh ?? "--"}</div>
+                <div className="text-sm text-slate-500">总强度分钟</div>
+                <div className="mt-2 text-2xl font-semibold">{selectedMetric.intensityMinutes ?? "--"}</div>
               </article>
               <article className="rounded-[1.75rem] border border-slate-200 bg-white p-5 shadow-[0_18px_50px_rgba(15,23,42,0.07)]">
-                <div className="text-sm text-slate-500">血氧</div>
-                <div className="mt-2 text-2xl font-semibold">{selectedMetric.bloodOxygen ?? "--"}</div>
+                <div className="text-sm text-slate-500">中等强度</div>
+                <div className="mt-2 text-2xl font-semibold">{selectedMetric.moderateIntensityMinutes ?? "--"}</div>
+              </article>
+              <article className="rounded-[1.75rem] border border-slate-200 bg-white p-5 shadow-[0_18px_50px_rgba(15,23,42,0.07)]">
+                <div className="text-sm text-slate-500">高强度</div>
+                <div className="mt-2 text-2xl font-semibold">{selectedMetric.vigorousIntensityMinutes ?? "--"}</div>
+              </article>
+              <article className="rounded-[1.75rem] border border-slate-200 bg-white p-5 shadow-[0_18px_50px_rgba(15,23,42,0.07)]">
+                <div className="text-sm text-slate-500">Body Battery High</div>
+                <div className="mt-2 text-2xl font-semibold">{selectedMetric.bodyBatteryHigh ?? "--"}</div>
               </article>
             </div>
 

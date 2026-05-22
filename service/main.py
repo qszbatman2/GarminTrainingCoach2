@@ -67,6 +67,7 @@ def sync_garmin_data(req: SyncRequest):
         sleep = safe_fetch(client.get_sleep_data, date_iso)  # Sleep detail
         hrv = safe_fetch(client.get_hrv_data, date_iso)  # HRV detail
         body_battery = safe_fetch(client.get_body_battery, date_iso, date_iso)  # Body battery (range)
+        body_composition = safe_fetch(getattr(client, "get_body_composition", lambda *_: None), date_iso, date_iso)
         blood_oxygen = safe_fetch(client.get_spo2_data, date_iso) # Blood oxygen
         training_status = safe_fetch(getattr(client, "get_training_status", lambda *_: None), date_iso)  # May not exist in some versions
 
@@ -115,6 +116,7 @@ def sync_garmin_data(req: SyncRequest):
                     "sleep": sleep,
                     "hrv": hrv,
                     "body_battery": body_battery,
+                    "body_composition": body_composition,
                     "blood_oxygen": blood_oxygen,
                     "training_status": training_status,
                     "stress": stress_data,

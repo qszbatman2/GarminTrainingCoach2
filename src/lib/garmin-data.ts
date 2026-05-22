@@ -208,6 +208,15 @@ function normalizeSeries(source: unknown, valueKeys: string[]): NumericPoint[] {
 
 export function getMetricDisplayValues(raw: unknown) {
   return {
+    weight: firstNumber(
+      [
+        "body_composition.dateWeightList.0.weight",
+        "body_composition.totalAverage.weight",
+        "body_composition.allMetrics.weight",
+        "body_composition.weight",
+      ],
+      raw
+    ),
     steps: firstNumber(["daily_steps.totalSteps", "steps.totalSteps", "stats.totalSteps"], raw),
     trainingReadiness: firstNumber(
       ["training_readiness.score", "training_readiness.readinessScore", "morning_training_readiness.score"],
@@ -236,6 +245,14 @@ export function getMetricDisplayValues(raw: unknown) {
       ["intensity_minutes.moderateIntensityMinutes", "intensity_minutes.totalIntensityMinutes", "stats.activeTimeInMinutes"],
       raw
     ),
+    moderateIntensityMinutes: firstNumber(
+      ["intensity_minutes.moderateIntensityMinutes", "intensity_minutes.moderateMinutes"],
+      raw
+    ),
+    vigorousIntensityMinutes: firstNumber(
+      ["intensity_minutes.vigorousIntensityMinutes", "intensity_minutes.vigorousMinutes"],
+      raw
+    ),
     floors: firstNumber(["floors.totalFloorsClimbed", "floors.floorsAscended", "stats.floorsClimbed"], raw),
     respiration: firstNumber(["respiration.avgWakingRespirationValue", "respiration.averageRespiration", "respiration.value"], raw),
     enduranceScore: firstNumber(["endurance_score.score", "endurance_score.value"], raw),
@@ -253,6 +270,13 @@ export const DAILY_TREND_GROUPS: TrendMetricGroup[] = [
     description: "聚焦恢复质量、夜间恢复与体能储备。",
     metrics: [
       { key: "sleepScore", title: "睡眠评分", unit: "", source: "stored", storedKey: "sleepScore" },
+      {
+        key: "weight",
+        title: "体重",
+        unit: "kg",
+        source: "raw",
+        paths: ["body_composition.dateWeightList.0.weight", "body_composition.totalAverage.weight", "body_composition.weight"],
+      },
       { key: "sleepDurationHours", title: "睡眠时长", unit: "h", source: "raw", paths: ["sleep.sleepTimeSeconds", "sleep.totalSleepSeconds"] },
       { key: "awakeDurationMinutes", title: "清醒时长", unit: "min", source: "raw", paths: ["sleep.awakeSleepSeconds", "sleep.awakeTimeSeconds"] },
       { key: "hrv", title: "夜间 HRV", unit: "ms", source: "stored", storedKey: "hrv" },
@@ -314,6 +338,20 @@ export const DAILY_TREND_GROUPS: TrendMetricGroup[] = [
         unit: "min",
         source: "raw",
         paths: ["intensity_minutes.moderateIntensityMinutes", "intensity_minutes.totalIntensityMinutes", "stats.activeTimeInMinutes"],
+      },
+      {
+        key: "moderateIntensityMinutes",
+        title: "中等强度分钟",
+        unit: "min",
+        source: "raw",
+        paths: ["intensity_minutes.moderateIntensityMinutes", "intensity_minutes.moderateMinutes"],
+      },
+      {
+        key: "vigorousIntensityMinutes",
+        title: "高强度分钟",
+        unit: "min",
+        source: "raw",
+        paths: ["intensity_minutes.vigorousIntensityMinutes", "intensity_minutes.vigorousMinutes"],
       },
       { key: "floors", title: "爬楼层数", unit: "floors", source: "raw", paths: ["floors.totalFloorsClimbed", "floors.floorsAscended"] },
       { key: "activeCalories", title: "活动消耗", unit: "kcal", source: "raw", paths: ["stats.activeKilocalories", "stats.activeCalories"] },

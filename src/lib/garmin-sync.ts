@@ -95,6 +95,16 @@ export function getMetricSummary(raw: unknown) {
     restingHr: firstNumber(["stats.restingHeartRate"], raw),
     stress: firstNumber(["stats.averageStressLevel"], raw),
     hrv: firstNumber(["hrv.hrvSummary.lastNightAvg"], raw),
+    weight: firstNumber(
+      [
+        "body_composition.dateWeightList.0.weight",
+        "body_composition.totalAverage.weight",
+        "body_composition.allMetrics.weight",
+        "body_composition.weight",
+      ],
+      raw
+    ),
+    intensityMinutes: firstNumber(["intensity_minutes.totalIntensityMinutes", "stats.activeTimeInMinutes"], raw),
     steps: firstNumber(["daily_steps.totalSteps", "steps.totalSteps", "stats.totalSteps"], raw),
     trainingReadiness: firstNumber(
       ["training_readiness.score", "training_readiness.readinessScore", "morning_training_readiness.score"],
