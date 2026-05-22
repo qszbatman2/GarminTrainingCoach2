@@ -4,6 +4,7 @@ import { Prisma } from "@prisma/client"
 
 import { createArkJsonCompletion } from "@/lib/ark"
 import prisma from "@/lib/prisma"
+import { buildTrainingAnalysisMessages } from "@/lib/training-prompt"
 import {
   buildTrainingContext,
   parseTrainingAnalysis,
@@ -13,34 +14,7 @@ import {
 } from "@/lib/training-analysis"
 
 const REPORT_TYPE = "latest"
-
-function buildAnalysisPrompt(context: ReturnType<typeof buildTrainingContext>) {
-  return [
-    "请基于下面的 Garmin 训练摘要，输出训练分析 JSON。",
-    "要求：",
-    "1. 只能根据输入数据判断，严禁编造缺失指标。",
-    "2. 不要给医疗诊断，不要建议超出数据支持范围的结论。",
-    "3. todayAdvice 和 next7DaysAdvice 必须可执行、具体、简洁。",
-    "4. 输出必须是纯 JSON，字段固定为：",
-    JSON.stringify(
-      {
-        summary: "string",
-        recoveryStatus: "good | moderate | poor",
-        loadStatus: "low | balanced | high",
-        riskLevel: "low | medium | high",
-        keyFindings: ["string"],
-        todayAdvice: ["string"],
-        next7DaysAdvice: ["string"],
-        watchMetrics: ["string"],
-        missingData: ["string"],
-      },
-      null,
-      2
-    ),
-    "训练摘要：",
-    JSON.stringify(context, null, 2),
-  ].join("\n")
-}
+const ANALYSIS_VERSION = "training-rule-v2"
 
 function normalizeJson<T>(value: unknown) {
   return JSON.parse(JSON.stringify(value)) as T
@@ -71,6 +45,7 @@ export function computeAnalysisInputHash(metrics: DailyMetricInput[], activities
   return createHash("sha256")
     .update(
       JSON.stringify({
+        version: ANALYSIS_VERSION,
         metrics: serializeMetrics(metrics),
         activities: serializeActivities(activities),
       })
@@ -80,16 +55,7 @@ export function computeAnalysisInputHash(metrics: DailyMetricInput[], activities
 
 async function generateAnalysisPayload(metrics: DailyMetricInput[], activities: ActivityInput[]) {
   const context = buildTrainingContext(metrics, activities)
-  const content = await createArkJsonCompletion([
-    {
-      role: "system",
-      content: "你是一名谨慎的耐力训练教练，擅长根据恢复与训练负荷数据给出保守、可执行的训练建议。",
-    },
-    {
-      role: "user",
-      content: buildAnalysisPrompt(context),
-    },
-  ])
+  const content = await createArkJsonCompletion(buildTrainingAnalysisMessages(context))
 
   return {
     context,

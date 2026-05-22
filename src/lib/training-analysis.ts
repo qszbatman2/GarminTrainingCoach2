@@ -19,7 +19,42 @@ export type ActivityInput = {
   date: Date
 }
 
-type TrendDirection = "up" | "flat" | "down" | "unknown"
+type BaselineMetricName = "restingHr" | "hrv" | "sleepScore" | "sleepInterruptions" | "stress"
+type LoadSource = "garmin" | "proxy" | "missing"
+type DecisionStatus = "可训" | "慎训" | "不训"
+type AbnormalityLevel = "normal" | "mild" | "severe" | "unknown"
+type LoadStatus = "balanced" | "high" | "low" | "unknown"
+type RecoveryCapacity = "normal" | "weak" | "unknown"
+
+type MetricDisplayValues = ReturnType<typeof getMetricDisplayValues>
+
+type EnrichedMetric = DailyMetricInput &
+  MetricDisplayValues & {
+    sleepDurationHours: number | null
+    deepSleepHours: number | null
+    remSleepHours: number | null
+    awakeDurationMinutes: number | null
+    sedentaryMinutes: number | null
+    recoveryHours: number | null
+  }
+
+type BaselineStats = {
+  mean: number | null
+  std: number | null
+  lower: number | null
+  upper: number | null
+  sampleDays: number
+}
+
+type MetricAbnormality = {
+  value: number | null
+  baseline: number | null
+  delta: number | null
+  deltaPct: number | null
+  lower: number | null
+  upper: number | null
+  level: AbnormalityLevel
+}
 
 export type TrainingContext = {
   generatedAt: string
@@ -29,53 +64,78 @@ export type TrainingContext = {
     activityStart: string | null
     activityEnd: string | null
   }
-  athleteProfile: {
-    totalMetricDays: number
-    totalActivities: number
-    primaryActivityTypes: string[]
+  baseline: {
+    windowDays: number
+    validDays: number
+    usedDays: number
+    restingHr: BaselineStats
+    hrv: BaselineStats
+    sleepScore: BaselineStats
+    sleepInterruptions: BaselineStats
+    stress: BaselineStats
   }
-  recovery: {
-    sleepScore7dAvg: number | null
-    sleepScoreTrend: TrendDirection
-    hrv7dAvg: number | null
-    hrvTrend: TrendDirection
-    restingHr7dAvg: number | null
-    restingHrTrend: TrendDirection
-    stress7dAvg: number | null
-    readiness7dAvg: number | null
-    bodyBatteryHigh7dAvg: number | null
+  today: {
+    date: string | null
+    restingHr: number | null
+    hrv: number | null
+    sleepScore: number | null
+    sleepDurationHours: number | null
+    deepSleepHours: number | null
+    remSleepHours: number | null
+    sleepInterruptions: number | null
+    stress: number | null
+    respiration: number | null
+    bloodOxygen: number | null
+    acuteTrainingLoad: number | null
+    chronicTrainingLoad: number | null
+    loadRatio: number | null
+    recoveryHours: number | null
+  }
+  abnormalities: {
+    restingHr: MetricAbnormality
+    hrv: MetricAbnormality
+    sleepScore: MetricAbnormality
+    sleepInterruptions: MetricAbnormality
+    stress: MetricAbnormality
+  }
+  fatigue: {
+    componentScores: {
+      hrv: number | null
+      sleep: number | null
+      restingHr: number | null
+      loadRatio: number | null
+      stress: number | null
+    }
+    totalScore: number | null
+    level: "恢复优秀" | "恢复良好" | "中度疲劳" | "重度疲劳" | "极度疲劳" | "未知"
   }
   load: {
-    activities7d: number
-    activities28d: number
-    duration7dMin: number
-    duration28dAvgPerWeek: number | null
-    distance7dKm: number | null
-    distance28dAvgPerWeekKm: number | null
-    longSessionLast14dMin: number | null
-    acuteChronicRatio: number | null
+    acuteTrainingLoad: number | null
+    chronicTrainingLoad: number | null
+    loadRatio: number | null
+    loadStatus: LoadStatus
+    source: LoadSource
+    recent7dDurationMin: number | null
+    recent42dAvgWeekDurationMin: number | null
   }
-  recentKeySessions: Array<{
-    date: string
-    type: string
-    name: string
-    durationMin: number | null
-    distanceKm: number | null
-  }>
-  flags: string[]
+  recovery: {
+    recoveryHours: number | null
+    lastHighIntensityDate: string | null
+    hoursToBaseline: number | null
+    recoveryCapacity: RecoveryCapacity
+  }
+  decision: {
+    shouldTrain: DecisionStatus
+    todayAdvice: string
+    ruleReason: string
+  }
   missingData: string[]
 }
 
 export type TrainingAnalysisResult = {
-  summary: string
-  recoveryStatus: "good" | "moderate" | "poor"
-  loadStatus: "low" | "balanced" | "high"
-  riskLevel: "low" | "medium" | "high"
-  keyFindings: string[]
-  todayAdvice: string[]
-  next7DaysAdvice: string[]
-  watchMetrics: string[]
-  missingData: string[]
+  shouldTrain: DecisionStatus
+  todayAdvice: string
+  reasonAnalysis: string
 }
 
 export type TrainingAnalysisPayload = {
@@ -83,8 +143,6 @@ export type TrainingAnalysisPayload = {
   analysis: TrainingAnalysisResult
   updatedAt?: string
 }
-
-type EnrichedMetric = DailyMetricInput & ReturnType<typeof getMetricDisplayValues>
 
 function toDateKey(date: Date) {
   return date.toISOString().slice(0, 10)
@@ -107,6 +165,21 @@ function average(values: Array<number | null | undefined>) {
   return numbers.reduce((sum, value) => sum + value, 0) / numbers.length
 }
 
+function standardDeviation(values: Array<number | null | undefined>) {
+  const numbers = values.filter((value): value is number => typeof value === "number" && Number.isFinite(value))
+  if (numbers.length < 2) {
+    return 0
+  }
+
+  const mean = average(numbers)
+  if (mean == null) {
+    return 0
+  }
+
+  const variance = numbers.reduce((total, value) => total + (value - mean) ** 2, 0) / numbers.length
+  return Math.sqrt(variance)
+}
+
 function sum(values: Array<number | null | undefined>) {
   const numbers = values.filter((value): value is number => typeof value === "number" && Number.isFinite(value))
   if (numbers.length === 0) {
@@ -116,243 +189,590 @@ function sum(values: Array<number | null | undefined>) {
   return numbers.reduce((total, value) => total + value, 0)
 }
 
-function getRecentItems<T extends { date: Date }>(items: T[], days: number) {
-  if (items.length === 0) {
-    return []
-  }
-
-  const latest = items[items.length - 1].date.getTime()
-  const start = latest - (days - 1) * 24 * 60 * 60 * 1000
-  return items.filter((item) => item.date.getTime() >= start)
+function clamp(value: number, min = 0, max = 100) {
+  return Math.min(Math.max(value, min), max)
 }
 
-function getPreviousWindow<T extends { date: Date }>(items: T[], days: number) {
-  if (items.length === 0) {
-    return []
-  }
-
-  const latest = items[items.length - 1].date.getTime()
-  const end = latest - days * 24 * 60 * 60 * 1000
-  const start = latest - (days * 2 - 1) * 24 * 60 * 60 * 1000
+function getWindowItems<T extends { date: Date }>(items: T[], referenceDate: Date, days: number) {
+  const end = referenceDate.getTime()
+  const start = end - (days - 1) * 24 * 60 * 60 * 1000
   return items.filter((item) => item.date.getTime() >= start && item.date.getTime() <= end)
 }
 
-function getTrend(current: number | null, previous: number | null, threshold = 0.05): TrendDirection {
-  if (current == null || previous == null || previous === 0) {
+function getWindowBefore<T extends { date: Date }>(items: T[], referenceDate: Date, days: number) {
+  const end = referenceDate.getTime() - 1
+  const start = end - (days - 1) * 24 * 60 * 60 * 1000
+  return items.filter((item) => item.date.getTime() >= start && item.date.getTime() <= end)
+}
+
+function normalizeHoursFromSeconds(value: number | null) {
+  if (value == null) {
+    return null
+  }
+
+  return round(value / 3600, 1)
+}
+
+function normalizeMinutes(value: number | null) {
+  if (value == null) {
+    return null
+  }
+
+  return round(value > 1440 ? value / 60 : value, 0)
+}
+
+function normalizeRecoveryHours(value: number | null) {
+  if (value == null) {
+    return null
+  }
+
+  return round(value > 240 ? value / 3600 : value, 0)
+}
+
+function enrichMetric(metric: DailyMetricInput): EnrichedMetric {
+  const displayValues = getMetricDisplayValues(metric.raw)
+
+  return {
+    ...metric,
+    ...displayValues,
+    sleepDurationHours: normalizeHoursFromSeconds(displayValues.sleepDurationHours),
+    deepSleepHours: normalizeHoursFromSeconds(displayValues.deepSleepHours),
+    remSleepHours: normalizeHoursFromSeconds(displayValues.remSleepHours),
+    awakeDurationMinutes: displayValues.awakeDurationMinutes != null ? round(displayValues.awakeDurationMinutes / 60, 0) : null,
+    sedentaryMinutes: normalizeMinutes(displayValues.sedentaryMinutes),
+    recoveryHours: normalizeRecoveryHours(displayValues.recoveryHours),
+  }
+}
+
+function buildBaselineStats(metrics: EnrichedMetric[], key: BaselineMetricName): BaselineStats {
+  const values = metrics.map((metric) => metric[key])
+  const mean = average(values)
+  const std = standardDeviation(values)
+
+  return {
+    mean: round(mean, 1),
+    std: round(std, 1),
+    lower: mean == null ? null : round(mean - std * 1.5, 1),
+    upper: mean == null ? null : round(mean + std * 1.5, 1),
+    sampleDays: values.filter((value): value is number => typeof value === "number" && Number.isFinite(value)).length,
+  }
+}
+
+function isBaselineEligible(metric: EnrichedMetric) {
+  const poorSleep = metric.sleepScore != null && metric.sleepScore < 50
+  const highStress = metric.stress != null && metric.stress >= 75
+  const heavyRecovery = metric.recoveryHours != null && metric.recoveryHours >= 72
+  const excessiveIntensity = metric.vigorousIntensityMinutes != null && metric.vigorousIntensityMinutes >= 90
+  const overload = metric.acuteChronicLoadRatio != null && metric.acuteChronicLoadRatio > 1.5
+
+  return !(poorSleep || highStress || heavyRecovery || excessiveIntensity || overload)
+}
+
+function getMetricAbnormality(options: {
+  value: number | null
+  stats: BaselineStats
+  mildRule: (value: number, baseline: number) => boolean
+  severeRule: (value: number, baseline: number) => boolean
+}) {
+  const { value, stats, mildRule, severeRule } = options
+  const baseline = stats.mean
+  if (value == null || baseline == null) {
+    return {
+      value,
+      baseline,
+      delta: null,
+      deltaPct: null,
+      lower: stats.lower,
+      upper: stats.upper,
+      level: "unknown" as const,
+    }
+  }
+
+  const delta = value - baseline
+  const deltaPct = baseline === 0 ? null : delta / baseline
+  const level: AbnormalityLevel = severeRule(value, baseline) ? "severe" : mildRule(value, baseline) ? "mild" : "normal"
+
+  return {
+    value: round(value, 1),
+    baseline,
+    delta: round(delta, 1),
+    deltaPct: round(deltaPct, 2),
+    lower: stats.lower,
+    upper: stats.upper,
+    level,
+  }
+}
+
+function getLoadStatus(loadRatio: number | null): LoadStatus {
+  if (loadRatio == null) {
     return "unknown"
   }
-
-  const delta = (current - previous) / Math.abs(previous)
-  if (delta >= threshold) {
-    return "up"
+  if (loadRatio > 1.5) {
+    return "high"
   }
-  if (delta <= -threshold) {
-    return "down"
+  if (loadRatio < 0.5) {
+    return "low"
   }
-
-  return "flat"
+  if (loadRatio >= 0.8 && loadRatio <= 1.2) {
+    return "balanced"
+  }
+  return "unknown"
 }
 
-function topActivityTypes(activities: ActivityInput[]) {
-  const counts = new Map<string, number>()
-  for (const activity of activities) {
-    const key = activity.type || "unknown"
-    counts.set(key, (counts.get(key) ?? 0) + 1)
+function scoreRestingHr(value: number | null, baseline: number | null) {
+  if (value == null || baseline == null) {
+    return null
   }
 
-  return [...counts.entries()]
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 3)
-    .map(([type]) => type)
+  const delta = Math.max(0, value - baseline)
+  return round(clamp(100 - delta * 8), 0)
 }
 
-function uniqueDays(items: Array<{ date: Date }>) {
-  return new Set(items.map((item) => toDateKey(item.date))).size
+function scoreHrv(value: number | null, baseline: number | null) {
+  if (value == null || baseline == null || baseline <= 0) {
+    return null
+  }
+
+  const dropPct = Math.max(0, (baseline - value) / baseline)
+  return round(clamp(100 - dropPct * 266.7), 0)
 }
 
-function buildFlags(metrics7d: EnrichedMetric[], metricsPrev7d: EnrichedMetric[], activities7d: ActivityInput[], activities28d: ActivityInput[]) {
-  const flags: string[] = []
-
-  const sleep7d = average(metrics7d.map((item) => item.sleepScore))
-  const sleepPrev7d = average(metricsPrev7d.map((item) => item.sleepScore))
-  const hrv7d = average(metrics7d.map((item) => item.hrv))
-  const hrvPrev7d = average(metricsPrev7d.map((item) => item.hrv))
-  const resting7d = average(metrics7d.map((item) => item.restingHr))
-  const restingPrev7d = average(metricsPrev7d.map((item) => item.restingHr))
-  const readiness7d = average(metrics7d.map((item) => item.trainingReadiness))
-
-  const duration7d = sum(activities7d.map((item) => (item.duration != null ? item.duration / 60 : null)))
-  const duration28d = sum(activities28d.map((item) => (item.duration != null ? item.duration / 60 : null)))
-  const chronicWeek = duration28d != null ? duration28d / 4 : null
-  const acuteChronicRatio = duration7d != null && chronicWeek && chronicWeek > 0 ? duration7d / chronicWeek : null
-
-  if (sleep7d != null && sleep7d < 65) {
-    flags.push("最近 7 天睡眠评分偏低")
-  }
-  if (hrv7d != null && hrvPrev7d != null && hrv7d < hrvPrev7d * 0.92) {
-    flags.push("HRV 较前 7 天明显下滑")
-  }
-  if (resting7d != null && restingPrev7d != null && resting7d > restingPrev7d + 3) {
-    flags.push("静息心率较前 7 天升高")
-  }
-  if (
-    sleep7d != null &&
-    sleepPrev7d != null &&
-    hrv7d != null &&
-    hrvPrev7d != null &&
-    resting7d != null &&
-    restingPrev7d != null &&
-    sleep7d < sleepPrev7d &&
-    hrv7d < hrvPrev7d &&
-    resting7d > restingPrev7d
-  ) {
-    flags.push("恢复指标组合走弱")
-  }
-  if (readiness7d != null && readiness7d < 45) {
-    flags.push("训练准备度连续偏低")
-  }
-  if (acuteChronicRatio != null && acuteChronicRatio > 1.3) {
-    flags.push("最近 7 天训练量高于近 28 天周均值较多")
-  }
-  if (acuteChronicRatio != null && acuteChronicRatio < 0.7) {
-    flags.push("最近 7 天训练量明显低于近 28 天周均值")
-  }
-  if (uniqueDays(activities7d) >= 5) {
-    flags.push("最近 7 天训练频率较高")
+function scoreSleep(value: number | null) {
+  if (value == null) {
+    return null
   }
 
-  return flags
+  return round(clamp(value), 0)
+}
+
+function scoreLoadRatio(loadRatio: number | null) {
+  if (loadRatio == null) {
+    return null
+  }
+
+  if (loadRatio >= 0.8 && loadRatio <= 1.2) {
+    return 100
+  }
+  if (loadRatio > 1.2) {
+    return round(clamp(100 - ((loadRatio - 1.2) / 0.3) * 60), 0)
+  }
+  return round(clamp(100 - ((0.8 - loadRatio) / 0.3) * 60), 0)
+}
+
+function scoreStress(value: number | null) {
+  if (value == null) {
+    return null
+  }
+
+  return round(clamp(100 - value), 0)
+}
+
+function weightedAverage(scores: Record<string, number | null>, weights: Record<string, number>) {
+  let weightedSum = 0
+  let weightSum = 0
+
+  for (const [key, weight] of Object.entries(weights)) {
+    const value = scores[key]
+    if (typeof value !== "number" || !Number.isFinite(value)) {
+      continue
+    }
+    weightedSum += value * weight
+    weightSum += weight
+  }
+
+  if (weightSum === 0) {
+    return null
+  }
+
+  return weightedSum / weightSum
+}
+
+function getFatigueLevel(score: number | null): TrainingContext["fatigue"]["level"] {
+  if (score == null) {
+    return "未知"
+  }
+  if (score >= 80) {
+    return "恢复优秀"
+  }
+  if (score >= 60) {
+    return "恢复良好"
+  }
+  if (score >= 40) {
+    return "中度疲劳"
+  }
+  if (score >= 20) {
+    return "重度疲劳"
+  }
+  return "极度疲劳"
+}
+
+function getMostRecentHighIntensityDate(metrics: EnrichedMetric[]) {
+  for (let index = metrics.length - 1; index >= 0; index -= 1) {
+    const metric = metrics[index]
+    const highIntensity =
+      (metric.vigorousIntensityMinutes != null && metric.vigorousIntensityMinutes >= 30) ||
+      (metric.recoveryHours != null && metric.recoveryHours >= 24) ||
+      (metric.acuteChronicLoadRatio != null && metric.acuteChronicLoadRatio > 1.2)
+
+    if (highIntensity) {
+      return metric.date
+    }
+  }
+
+  return null
+}
+
+function getHoursToBaseline(metrics: EnrichedMetric[], startDate: Date, restingBaseline: number | null, hrvBaseline: number | null) {
+  if (restingBaseline == null && hrvBaseline == null) {
+    return null
+  }
+
+  const startTime = startDate.getTime()
+  const recovered = metrics.find((metric) => {
+    if (metric.date.getTime() <= startTime) {
+      return false
+    }
+
+    const restingRecovered = restingBaseline == null || (metric.restingHr != null && metric.restingHr <= restingBaseline + 1)
+    const hrvRecovered = hrvBaseline == null || (metric.hrv != null && metric.hrv >= hrvBaseline * 0.95)
+    return restingRecovered && hrvRecovered
+  })
+
+  if (!recovered) {
+    return null
+  }
+
+  return round((recovered.date.getTime() - startTime) / (1000 * 60 * 60), 0)
+}
+
+function getRecoveryCapacity(hoursToBaseline: number | null, latestDate: Date, lastHighIntensityDate: Date | null): RecoveryCapacity {
+  if (hoursToBaseline != null) {
+    if (hoursToBaseline <= 48) {
+      return "normal"
+    }
+    if (hoursToBaseline > 72) {
+      return "weak"
+    }
+  }
+
+  if (lastHighIntensityDate) {
+    const pendingHours = (latestDate.getTime() - lastHighIntensityDate.getTime()) / (1000 * 60 * 60)
+    if (pendingHours > 72) {
+      return "weak"
+    }
+  }
+
+  return "unknown"
+}
+
+function buildFallbackReasonAnalysis(context: TrainingContext) {
+  const parts: string[] = []
+
+  if (context.today.restingHr != null) {
+    const delta = context.abnormalities.restingHr.delta
+    parts.push(
+      `当日静息心率 ${context.today.restingHr}bpm${delta == null ? "" : delta >= 0 ? `，较基线高 ${Math.abs(delta)}bpm` : `，较基线低 ${Math.abs(delta)}bpm`}`
+    )
+  }
+  if (context.today.hrv != null && context.baseline.hrv.mean != null) {
+    const pct = context.abnormalities.hrv.deltaPct
+    parts.push(`HRV ${context.today.hrv}ms${pct == null ? "" : `，约为基线的 ${Math.round((1 + pct) * 100)}%`}`)
+  }
+  if (context.today.sleepScore != null) {
+    parts.push(
+      `睡眠评分 ${context.today.sleepScore} 分${context.today.sleepInterruptions != null ? `，睡眠中断 ${context.today.sleepInterruptions} 次` : ""}`
+    )
+  }
+  if (context.fatigue.totalScore != null) {
+    parts.push(`综合疲劳得分 ${context.fatigue.totalScore} 分，处于${context.fatigue.level}区间`)
+  }
+  if (context.load.loadRatio != null) {
+    parts.push(`负荷比值 ${context.load.loadRatio}，当前负荷${context.load.loadStatus === "balanced" ? "基本均衡" : context.load.loadStatus === "high" ? "偏高" : context.load.loadStatus === "low" ? "偏低" : "需继续观察"}`)
+  }
+  parts.push(context.decision.ruleReason)
+
+  const merged = `${parts.join("。")}。`
+  return merged.length > 300 ? `${merged.slice(0, 297)}...` : merged
+}
+
+function fallbackAnalysis(context: TrainingContext): TrainingAnalysisResult {
+  return {
+    shouldTrain: context.decision.shouldTrain,
+    todayAdvice: context.decision.todayAdvice,
+    reasonAnalysis: buildFallbackReasonAnalysis(context),
+  }
 }
 
 export function buildTrainingContext(metrics: DailyMetricInput[], activities: ActivityInput[]): TrainingContext {
-  const sortedMetrics = [...metrics]
-    .sort((a, b) => a.date.getTime() - b.date.getTime())
-    .map((metric) => ({
-      ...metric,
-      ...getMetricDisplayValues(metric.raw),
-    }))
+  const sortedMetrics = [...metrics].sort((a, b) => a.date.getTime() - b.date.getTime()).map(enrichMetric)
   const sortedActivities = [...activities].sort((a, b) => a.date.getTime() - b.date.getTime())
+  const latestMetric = sortedMetrics[sortedMetrics.length - 1]
 
-  const metrics7d = getRecentItems(sortedMetrics, 7)
-  const metricsPrev7d = getPreviousWindow(sortedMetrics, 7)
-  const activities7d = getRecentItems(sortedActivities, 7)
-  const activities14d = getRecentItems(sortedActivities, 14)
-  const activities28d = getRecentItems(sortedActivities, 28)
+  if (!latestMetric) {
+    return {
+      generatedAt: new Date().toISOString(),
+      dateRange: {
+        metricStart: null,
+        metricEnd: null,
+        activityStart: sortedActivities[0] ? toDateKey(sortedActivities[0].date) : null,
+        activityEnd: sortedActivities[sortedActivities.length - 1] ? toDateKey(sortedActivities[sortedActivities.length - 1].date) : null,
+      },
+      baseline: {
+        windowDays: 28,
+        validDays: 0,
+        usedDays: 0,
+        restingHr: { mean: null, std: null, lower: null, upper: null, sampleDays: 0 },
+        hrv: { mean: null, std: null, lower: null, upper: null, sampleDays: 0 },
+        sleepScore: { mean: null, std: null, lower: null, upper: null, sampleDays: 0 },
+        sleepInterruptions: { mean: null, std: null, lower: null, upper: null, sampleDays: 0 },
+        stress: { mean: null, std: null, lower: null, upper: null, sampleDays: 0 },
+      },
+      today: {
+        date: null,
+        restingHr: null,
+        hrv: null,
+        sleepScore: null,
+        sleepDurationHours: null,
+        deepSleepHours: null,
+        remSleepHours: null,
+        sleepInterruptions: null,
+        stress: null,
+        respiration: null,
+        bloodOxygen: null,
+        acuteTrainingLoad: null,
+        chronicTrainingLoad: null,
+        loadRatio: null,
+        recoveryHours: null,
+      },
+      abnormalities: {
+        restingHr: { value: null, baseline: null, delta: null, deltaPct: null, lower: null, upper: null, level: "unknown" },
+        hrv: { value: null, baseline: null, delta: null, deltaPct: null, lower: null, upper: null, level: "unknown" },
+        sleepScore: { value: null, baseline: null, delta: null, deltaPct: null, lower: null, upper: null, level: "unknown" },
+        sleepInterruptions: { value: null, baseline: null, delta: null, deltaPct: null, lower: null, upper: null, level: "unknown" },
+        stress: { value: null, baseline: null, delta: null, deltaPct: null, lower: null, upper: null, level: "unknown" },
+      },
+      fatigue: {
+        componentScores: { hrv: null, sleep: null, restingHr: null, loadRatio: null, stress: null },
+        totalScore: null,
+        level: "未知",
+      },
+      load: {
+        acuteTrainingLoad: null,
+        chronicTrainingLoad: null,
+        loadRatio: null,
+        loadStatus: "unknown",
+        source: "missing",
+        recent7dDurationMin: null,
+        recent42dAvgWeekDurationMin: null,
+      },
+      recovery: {
+        recoveryHours: null,
+        lastHighIntensityDate: null,
+        hoursToBaseline: null,
+        recoveryCapacity: "unknown",
+      },
+      decision: {
+        shouldTrain: "慎训",
+        todayAdvice: "关键恢复数据不足，建议先做低强度活动。",
+        ruleReason: "当前缺少可用于判断训练状态的核心数据，先按保守策略处理。",
+      },
+      missingData: ["还没有可用于分析的 Garmin 日级数据"],
+    }
+  }
 
-  const sleep7d = average(metrics7d.map((item) => item.sleepScore))
-  const sleepPrev7d = average(metricsPrev7d.map((item) => item.sleepScore))
-  const hrv7d = average(metrics7d.map((item) => item.hrv))
-  const hrvPrev7d = average(metricsPrev7d.map((item) => item.hrv))
-  const resting7d = average(metrics7d.map((item) => item.restingHr))
-  const restingPrev7d = average(metricsPrev7d.map((item) => item.restingHr))
-  const stress7d = average(metrics7d.map((item) => item.stress))
-  const readiness7d = average(metrics7d.map((item) => item.trainingReadiness))
-  const bodyBatteryHigh7d = average(metrics7d.map((item) => item.bodyBatteryHigh))
+  const baselineWindow = getWindowBefore(sortedMetrics, latestMetric.date, 28)
+  const validBaseline = baselineWindow.filter(isBaselineEligible)
+  const baselineMetrics = validBaseline.length >= 7 ? validBaseline : baselineWindow
+  const baseline = {
+    windowDays: 28,
+    validDays: validBaseline.length,
+    usedDays: baselineMetrics.length,
+    restingHr: buildBaselineStats(baselineMetrics, "restingHr"),
+    hrv: buildBaselineStats(baselineMetrics, "hrv"),
+    sleepScore: buildBaselineStats(baselineMetrics, "sleepScore"),
+    sleepInterruptions: buildBaselineStats(baselineMetrics, "sleepInterruptions"),
+    stress: buildBaselineStats(baselineMetrics, "stress"),
+  }
 
-  const duration7d = sum(activities7d.map((item) => (item.duration != null ? item.duration / 60 : null)))
-  const duration28d = sum(activities28d.map((item) => (item.duration != null ? item.duration / 60 : null)))
-  const distance7d = sum(activities7d.map((item) => (item.distance != null ? item.distance / 1000 : null)))
-  const distance28d = sum(activities28d.map((item) => (item.distance != null ? item.distance / 1000 : null)))
-  const weeklyDuration28d = duration28d != null ? duration28d / 4 : null
-  const weeklyDistance28d = distance28d != null ? distance28d / 4 : null
-  const acuteChronicRatio = duration7d != null && weeklyDuration28d && weeklyDuration28d > 0 ? duration7d / weeklyDuration28d : null
+  const recentActivities7d = getWindowItems(sortedActivities, latestMetric.date, 7)
+  const recentActivities42d = getWindowItems(sortedActivities, latestMetric.date, 42)
+  const recent7dDurationMin = sum(recentActivities7d.map((activity) => (activity.duration != null ? activity.duration / 60 : null)))
+  const recent42dTotalDurationMin = sum(recentActivities42d.map((activity) => (activity.duration != null ? activity.duration / 60 : null)))
+  const recent42dAvgWeekDurationMin = recent42dTotalDurationMin != null ? recent42dTotalDurationMin / 6 : null
+
+  const acuteTrainingLoad = latestMetric.acuteTrainingLoad ?? round(recent7dDurationMin, 0)
+  const chronicTrainingLoad = latestMetric.chronicTrainingLoad ?? round(recent42dAvgWeekDurationMin, 0)
+  const loadRatio =
+    latestMetric.acuteChronicLoadRatio ??
+    (recent7dDurationMin != null && recent42dAvgWeekDurationMin != null && recent42dAvgWeekDurationMin > 0
+      ? recent7dDurationMin / recent42dAvgWeekDurationMin
+      : acuteTrainingLoad != null && chronicTrainingLoad != null && chronicTrainingLoad > 0
+        ? acuteTrainingLoad / chronicTrainingLoad
+        : null)
+  const loadSource: LoadSource =
+    latestMetric.acuteChronicLoadRatio != null || (latestMetric.acuteTrainingLoad != null && latestMetric.chronicTrainingLoad != null)
+      ? "garmin"
+      : recent7dDurationMin != null && recent42dAvgWeekDurationMin != null
+        ? "proxy"
+        : "missing"
+
+  const abnormalities = {
+    restingHr: getMetricAbnormality({
+      value: latestMetric.restingHr,
+      stats: baseline.restingHr,
+      mildRule: (value, baselineValue) => value >= baselineValue + 5,
+      severeRule: (value, baselineValue) => value >= baselineValue + 10,
+    }),
+    hrv: getMetricAbnormality({
+      value: latestMetric.hrv,
+      stats: baseline.hrv,
+      mildRule: (value, baselineValue) => value <= baselineValue * 0.85,
+      severeRule: (value, baselineValue) => value <= baselineValue * 0.7,
+    }),
+    sleepScore: getMetricAbnormality({
+      value: latestMetric.sleepScore,
+      stats: baseline.sleepScore,
+      mildRule: (value) => value < 60,
+      severeRule: (value) => value < 50,
+    }),
+    sleepInterruptions: getMetricAbnormality({
+      value: latestMetric.sleepInterruptions,
+      stats: baseline.sleepInterruptions,
+      mildRule: (value) => value > 5,
+      severeRule: (value) => value > 8,
+    }),
+    stress: getMetricAbnormality({
+      value: latestMetric.stress,
+      stats: baseline.stress,
+      mildRule: (value, baselineValue) => value >= Math.max(baselineValue + 10, 60),
+      severeRule: (value, baselineValue) => value >= Math.max(baselineValue + 20, 75),
+    }),
+  }
+
+  const componentScores = {
+    hrv: scoreHrv(latestMetric.hrv, baseline.hrv.mean),
+    sleep: scoreSleep(latestMetric.sleepScore),
+    restingHr: scoreRestingHr(latestMetric.restingHr, baseline.restingHr.mean),
+    loadRatio: scoreLoadRatio(loadRatio),
+    stress: scoreStress(latestMetric.stress),
+  }
+
+  const fatigueTotalScore = round(
+    weightedAverage(componentScores, {
+      hrv: 0.35,
+      sleep: 0.25,
+      restingHr: 0.15,
+      loadRatio: 0.15,
+      stress: 0.1,
+    }),
+    0
+  )
+
+  const lastHighIntensityDate = getMostRecentHighIntensityDate(getWindowItems(sortedMetrics, latestMetric.date, 14))
+  const hoursToBaseline = lastHighIntensityDate ? getHoursToBaseline(sortedMetrics, lastHighIntensityDate, baseline.restingHr.mean, baseline.hrv.mean) : null
+  const recoveryCapacity = getRecoveryCapacity(hoursToBaseline, latestMetric.date, lastHighIntensityDate)
+
+  const severeAbnormal = Object.values(abnormalities).some((item) => item.level === "severe")
+  let shouldTrain: DecisionStatus = "可训"
+  let todayAdvice = "按原定强度正常训练。"
+  let ruleReason = "核心恢复指标整体稳定，当前状态满足常规训练条件。"
+
+  if (severeAbnormal || (fatigueTotalScore != null && fatigueTotalScore < 40)) {
+    shouldTrain = "不训"
+    todayAdvice = "今天不建议训练，优先休息与恢复。"
+    ruleReason = "存在重度异常指标或综合疲劳分偏低，当前身体状态不适合安排正式训练。"
+  } else if (fatigueTotalScore != null && fatigueTotalScore < 60) {
+    shouldTrain = "慎训"
+    todayAdvice = "下调训练强度，减少运动量。"
+    ruleReason = "综合疲劳分处于中度疲劳区间，今天更适合降强度训练。"
+  } else if (fatigueTotalScore != null && fatigueTotalScore >= 80) {
+    shouldTrain = "可训"
+    todayAdvice = "状态较好，可适度加量训练。"
+    ruleReason = "综合疲劳分较高，恢复状态优秀，可在计划内适度增加训练刺激。"
+  }
+
+  if (loadRatio != null && loadRatio > 1.5) {
+    shouldTrain = shouldTrain === "不训" ? "不训" : "慎训"
+    todayAdvice = "负荷偏高，今天必须降低训练强度。"
+    ruleReason = "7 天急性负荷明显高于 42 天慢性负荷，存在较高过度训练风险。"
+  }
 
   const missingData: string[] = []
-  if (sortedMetrics.length < 7) {
-    missingData.push("日级指标少于 7 天，趋势判断不稳定")
+  if (baseline.validDays < 7) {
+    missingData.push("近 28 天有效基线样本不足，已回退到原始 28 天窗口估算。")
   }
-  if (metrics7d.filter((item) => item.hrv != null).length < 4) {
-    missingData.push("最近 7 天 HRV 样本不足")
+  if (latestMetric.restingHr == null) {
+    missingData.push("缺少当日静息心率，疲劳判定精度下降。")
   }
-  if (metrics7d.filter((item) => item.sleepScore != null).length < 4) {
-    missingData.push("最近 7 天睡眠评分样本不足")
+  if (latestMetric.hrv == null) {
+    missingData.push("缺少当日 HRV，疲劳判定精度下降。")
   }
-  if (activities28d.length < 3) {
-    missingData.push("最近 28 天活动记录偏少")
+  if (latestMetric.sleepScore == null) {
+    missingData.push("缺少当日睡眠评分，恢复判断偏保守。")
+  }
+  if (loadSource === "proxy") {
+    missingData.push("训练负荷比值使用活动时长代理计算，并非 Garmin 原始 ATL/CTL。")
+  }
+  if (loadSource === "missing") {
+    missingData.push("缺少稳定的训练负荷数据，负荷比值无法参与完整判断。")
+  }
+  if (latestMetric.sleepInterruptions == null) {
+    missingData.push("缺少睡眠中断次数，睡眠质量判断不完整。")
   }
 
   return {
     generatedAt: new Date().toISOString(),
     dateRange: {
       metricStart: sortedMetrics[0] ? toDateKey(sortedMetrics[0].date) : null,
-      metricEnd: sortedMetrics[sortedMetrics.length - 1] ? toDateKey(sortedMetrics[sortedMetrics.length - 1].date) : null,
+      metricEnd: toDateKey(latestMetric.date),
       activityStart: sortedActivities[0] ? toDateKey(sortedActivities[0].date) : null,
       activityEnd: sortedActivities[sortedActivities.length - 1] ? toDateKey(sortedActivities[sortedActivities.length - 1].date) : null,
     },
-    athleteProfile: {
-      totalMetricDays: sortedMetrics.length,
-      totalActivities: sortedActivities.length,
-      primaryActivityTypes: topActivityTypes(sortedActivities),
+    baseline,
+    today: {
+      date: toDateKey(latestMetric.date),
+      restingHr: latestMetric.restingHr,
+      hrv: latestMetric.hrv,
+      sleepScore: latestMetric.sleepScore,
+      sleepDurationHours: latestMetric.sleepDurationHours,
+      deepSleepHours: latestMetric.deepSleepHours,
+      remSleepHours: latestMetric.remSleepHours,
+      sleepInterruptions: latestMetric.sleepInterruptions,
+      stress: latestMetric.stress,
+      respiration: latestMetric.respiration,
+      bloodOxygen: latestMetric.bloodOxygen,
+      acuteTrainingLoad: round(acuteTrainingLoad, 0),
+      chronicTrainingLoad: round(chronicTrainingLoad, 0),
+      loadRatio: round(loadRatio, 2),
+      recoveryHours: latestMetric.recoveryHours,
     },
-    recovery: {
-      sleepScore7dAvg: round(sleep7d, 0),
-      sleepScoreTrend: getTrend(sleep7d, sleepPrev7d, 0.05),
-      hrv7dAvg: round(hrv7d, 0),
-      hrvTrend: getTrend(hrv7d, hrvPrev7d, 0.08),
-      restingHr7dAvg: round(resting7d, 0),
-      restingHrTrend: getTrend(resting7d, restingPrev7d, 0.04),
-      stress7dAvg: round(stress7d, 0),
-      readiness7dAvg: round(readiness7d, 0),
-      bodyBatteryHigh7dAvg: round(bodyBatteryHigh7d, 0),
+    abnormalities,
+    fatigue: {
+      componentScores,
+      totalScore: fatigueTotalScore,
+      level: getFatigueLevel(fatigueTotalScore),
     },
     load: {
-      activities7d: activities7d.length,
-      activities28d: activities28d.length,
-      duration7dMin: round(duration7d, 0) ?? 0,
-      duration28dAvgPerWeek: round(weeklyDuration28d, 0),
-      distance7dKm: round(distance7d, 1),
-      distance28dAvgPerWeekKm: round(weeklyDistance28d, 1),
-      longSessionLast14dMin: round(
-        activities14d.reduce<number | null>((max, item) => {
-          const minutes = item.duration != null ? item.duration / 60 : null
-          if (minutes == null) {
-            return max
-          }
-          return max == null ? minutes : Math.max(max, minutes)
-        }, null),
-        0
-      ),
-      acuteChronicRatio: round(acuteChronicRatio, 2),
+      acuteTrainingLoad: round(acuteTrainingLoad, 0),
+      chronicTrainingLoad: round(chronicTrainingLoad, 0),
+      loadRatio: round(loadRatio, 2),
+      loadStatus: getLoadStatus(loadRatio),
+      source: loadSource,
+      recent7dDurationMin: round(recent7dDurationMin, 0),
+      recent42dAvgWeekDurationMin: round(recent42dAvgWeekDurationMin, 0),
     },
-    recentKeySessions: [...sortedActivities]
-      .sort((a, b) => b.date.getTime() - a.date.getTime())
-      .slice(0, 5)
-      .map((activity) => ({
-        date: toDateKey(activity.date),
-        type: activity.type,
-        name: activity.name,
-        durationMin: round(activity.duration != null ? activity.duration / 60 : null, 0),
-        distanceKm: round(activity.distance != null ? activity.distance / 1000 : null, 1),
-      })),
-    flags: buildFlags(metrics7d, metricsPrev7d, activities7d, activities28d),
+    recovery: {
+      recoveryHours: latestMetric.recoveryHours,
+      lastHighIntensityDate: lastHighIntensityDate ? toDateKey(lastHighIntensityDate) : null,
+      hoursToBaseline,
+      recoveryCapacity,
+    },
+    decision: {
+      shouldTrain,
+      todayAdvice,
+      ruleReason,
+    },
     missingData,
-  }
-}
-
-function fallbackAnalysis(context: TrainingContext): TrainingAnalysisResult {
-  const riskLevel =
-    context.flags.some((item) => item.includes("恢复指标组合走弱") || item.includes("训练量高于")) ? "high" : context.flags.length >= 2 ? "medium" : "low"
-  const recoveryStatus =
-    context.flags.some((item) => item.includes("恢复")) || context.flags.some((item) => item.includes("睡眠")) ? "poor" : context.recovery.readiness7dAvg != null && context.recovery.readiness7dAvg < 60 ? "moderate" : "good"
-  const loadStatus =
-    context.flags.some((item) => item.includes("训练量高于")) ? "high" : context.flags.some((item) => item.includes("训练量明显低于")) ? "low" : "balanced"
-
-  return {
-    summary: "已生成基于规则的兜底分析，可先参考恢复状态、训练负荷和缺失数据提示。",
-    recoveryStatus,
-    loadStatus,
-    riskLevel,
-    keyFindings: context.flags.length > 0 ? context.flags : ["近期没有明显异常旗标"],
-    todayAdvice:
-      recoveryStatus === "poor"
-        ? ["今天优先恢复，安排休息或 30 分钟以内低强度活动。"]
-        : ["今天可安排轻松有氧或技巧训练，避免无计划加量。"],
-    next7DaysAdvice:
-      loadStatus === "high"
-        ? ["下周先降 20% 左右总量，保留 1 次关键课，其余以恢复跑或低强度训练为主。"]
-        : ["下周维持渐进负荷，优先保证睡眠和 1 次长课。"],
-    watchMetrics: ["睡眠评分", "HRV", "静息心率", "训练准备度"],
-    missingData: context.missingData,
   }
 }
 
@@ -371,30 +791,24 @@ function extractJsonObject(content: string) {
   throw new Error("模型返回结果不是合法 JSON")
 }
 
-function asStringArray(value: unknown) {
-  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string" && item.trim().length > 0) : []
-}
-
-function normalizeEnum<T extends string>(value: unknown, allowed: readonly T[], fallback: T): T {
-  return typeof value === "string" && allowed.includes(value as T) ? (value as T) : fallback
+function normalizeDecisionStatus(value: unknown, fallback: DecisionStatus): DecisionStatus {
+  return value === "可训" || value === "慎训" || value === "不训" ? value : fallback
 }
 
 export function parseTrainingAnalysis(content: string, context: TrainingContext): TrainingAnalysisResult {
+  const fallback = fallbackAnalysis(context)
+
   try {
     const data = JSON.parse(extractJsonObject(content)) as Partial<TrainingAnalysisResult>
+    const reasonAnalysis =
+      typeof data.reasonAnalysis === "string" && data.reasonAnalysis.trim().length > 0 ? data.reasonAnalysis.trim().slice(0, 300) : fallback.reasonAnalysis
 
     return {
-      summary: typeof data.summary === "string" && data.summary.trim() ? data.summary : fallbackAnalysis(context).summary,
-      recoveryStatus: normalizeEnum(data.recoveryStatus, ["good", "moderate", "poor"] as const, fallbackAnalysis(context).recoveryStatus),
-      loadStatus: normalizeEnum(data.loadStatus, ["low", "balanced", "high"] as const, fallbackAnalysis(context).loadStatus),
-      riskLevel: normalizeEnum(data.riskLevel, ["low", "medium", "high"] as const, fallbackAnalysis(context).riskLevel),
-      keyFindings: asStringArray(data.keyFindings).slice(0, 6),
-      todayAdvice: asStringArray(data.todayAdvice).slice(0, 5),
-      next7DaysAdvice: asStringArray(data.next7DaysAdvice).slice(0, 7),
-      watchMetrics: asStringArray(data.watchMetrics).slice(0, 6),
-      missingData: asStringArray(data.missingData).length > 0 ? asStringArray(data.missingData).slice(0, 6) : context.missingData,
+      shouldTrain: normalizeDecisionStatus(data.shouldTrain, fallback.shouldTrain),
+      todayAdvice: typeof data.todayAdvice === "string" && data.todayAdvice.trim() ? data.todayAdvice.trim() : fallback.todayAdvice,
+      reasonAnalysis,
     }
   } catch {
-    return fallbackAnalysis(context)
+    return fallback
   }
 }
