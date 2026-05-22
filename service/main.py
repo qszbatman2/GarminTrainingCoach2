@@ -6,7 +6,7 @@ import os
 import logging
 import hashlib
 
-app = FastAPI(title="Garmin Data Scraper Microservice", version="0.1.1")
+app = FastAPI(title="Garmin Data Scraper Microservice", version="0.1.2")
 logger = logging.getLogger(__name__)
 
 @app.get("/")
@@ -22,7 +22,7 @@ def version():
     # Render/Vercel may inject git metadata; expose it so we can confirm deployments.
     return {
         "service": "garmin-scraper",
-        "version": "0.1.1",
+        "version": "0.1.2",
         "render_git_commit": os.getenv("RENDER_GIT_COMMIT"),
         "render_service_id": os.getenv("RENDER_SERVICE_ID"),
     }
@@ -56,11 +56,17 @@ def sync_garmin_data(req: SyncRequest):
         
         # Helper function to fetch data safely
         def safe_fetch(fetch_func, *args, **kwargs):
+            if not callable(fetch_func):
+                return None
             try:
                 return fetch_func(*args, **kwargs)
             except Exception as e:
-                logger.warning(f"Failed to fetch data using {fetch_func.__name__}: {str(e)}")
+                fetch_name = getattr(fetch_func, "__name__", fetch_func.__class__.__name__)
+                logger.warning(f"Failed to fetch data using {fetch_name}: {str(e)}")
                 return None
+
+        def safe_connectapi(path: str):
+            return safe_fetch(getattr(client, "connectapi", None), path)
 
         # Fetch comprehensive daily data safely
         stats = safe_fetch(client.get_stats, date_iso)  # Daily summary
@@ -70,6 +76,7 @@ def sync_garmin_data(req: SyncRequest):
         body_composition = safe_fetch(getattr(client, "get_body_composition", lambda *_: None), date_iso, date_iso)
         blood_oxygen = safe_fetch(client.get_spo2_data, date_iso) # Blood oxygen
         training_status = safe_fetch(getattr(client, "get_training_status", lambda *_: None), date_iso)  # May not exist in some versions
+        training_status_aggregated = safe_connectapi(f"/metrics-service/metrics/trainingstatus/aggregated/{date_iso}")
 
         # Additional daily health + training metrics (best-effort)
         stress_data = safe_fetch(client.get_stress_data, date_iso)
@@ -85,6 +92,10 @@ def sync_garmin_data(req: SyncRequest):
         endurance_score = safe_fetch(client.get_endurance_score, date_iso, date_iso)
         hill_score = safe_fetch(client.get_hill_score, date_iso, date_iso)
         running_tolerance = safe_fetch(client.get_running_tolerance, date_iso, date_iso)
+        user_profile = safe_connectapi("/userprofile-service/userprofile/settings")
+        lactate_threshold = safe_fetch(getattr(client, "get_lactate_threshold", None))
+        if lactate_threshold is None:
+            lactate_threshold = safe_connectapi("/biometric-service/biometric/latestLactateThreshold")
         
         # Fetch activities for the day safely
         activities = safe_fetch(client.get_activities_by_date, date_iso, date_iso)
@@ -119,6 +130,7 @@ def sync_garmin_data(req: SyncRequest):
                     "body_composition": body_composition,
                     "blood_oxygen": blood_oxygen,
                     "training_status": training_status,
+                    "training_status_aggregated": training_status_aggregated,
                     "stress": stress_data,
                     "heart_rates": heart_rates,
                     "respiration": respiration,
@@ -132,6 +144,8 @@ def sync_garmin_data(req: SyncRequest):
                     "endurance_score": endurance_score,
                     "hill_score": hill_score,
                     "running_tolerance": running_tolerance,
+                    "user_profile": user_profile,
+                    "lactate_threshold": lactate_threshold,
                 },
                 "activities": enriched
             }

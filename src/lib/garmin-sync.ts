@@ -46,6 +46,15 @@ function asRecord(value: unknown): Record<string, unknown> | null {
 
 function getByPath(source: unknown, path: string): unknown {
   return path.split(".").reduce<unknown>((current, key) => {
+    if (Array.isArray(current)) {
+      const index = Number(key)
+      if (Number.isInteger(index) && index >= 0) {
+        return current[index]
+      }
+
+      return undefined
+    }
+
     const record = asRecord(current)
     if (!record) {
       return undefined
