@@ -312,6 +312,7 @@ export function DataExplorer({ userEmail, metrics, activities, initialBackfillJo
   const router = useRouter()
   const [selectedDate, setSelectedDate] = useState(metrics[0]?.date ?? "")
   const [backfillLoading, setBackfillLoading] = useState(false)
+  const [resumeLoading, setResumeLoading] = useState(false)
   const [backfillResult, setBackfillResult] = useState("")
   const [backfillJob, setBackfillJob] = useState<BackfillJobSnapshot | null>(initialBackfillJob)
 
@@ -367,6 +368,9 @@ export function DataExplorer({ userEmail, metrics, activities, initialBackfillJo
     return backfillTargetDates[backfillJob.currentIndex] ?? null
   }, [backfillJob, backfillTargetDates])
   const heartbeatStatus = useMemo(() => getHeartbeatStatus(backfillJob), [backfillJob])
+  const canResumeBackfill =
+    !!backfillJob &&
+    (backfillJob.status === "failed" || (backfillJob.status === "running" && heartbeatStatus?.label === "长时间无心跳") || backfillJob.status === "pending")
   const overviewCards = useMemo<InsightCard[]>(
     () => [
       {
@@ -518,6 +522,33 @@ export function DataExplorer({ userEmail, metrics, activities, initialBackfillJo
     }
   }
 
+  async function handleResumeBackfill() {
+    if (!backfillJob) {
+      return
+    }
+
+    setResumeLoading(true)
+    setBackfillResult("")
+
+    try {
+      const response = await fetch(`/api/garmin-backfill/${backfillJob.id}`, {
+        method: "POST",
+      })
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || "恢复补拉失败")
+      }
+
+      setBackfillJob(data.job)
+      setBackfillResult(data.resumed ? "已重新触发后台补拉，继续观察日志与心跳。" : "当前任务无需恢复。")
+    } catch (error: unknown) {
+      setBackfillResult(error instanceof Error ? error.message : "恢复补拉失败")
+    } finally {
+      setResumeLoading(false)
+    }
+  }
+
   return (
     <>
       <section className="grid gap-6 xl:grid-cols-[1.25fr_0.75fr]">
@@ -537,6 +568,16 @@ export function DataExplorer({ userEmail, metrics, activities, initialBackfillJo
               >
                 查看数据日历
               </Link>
+              {canResumeBackfill ? (
+                <button
+                  className="rounded-full border border-amber-200 bg-amber-50 px-5 py-3 text-sm font-medium text-amber-700 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
+                  disabled={resumeLoading}
+                  onClick={handleResumeBackfill}
+                  type="button"
+                >
+                  {resumeLoading ? "恢复中..." : "恢复补拉任务"}
+                </button>
+              ) : null}
               <button
                 className="rounded-full bg-slate-950 px-5 py-3 text-sm font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
                 disabled={backfillLoading || ["pending", "running"].includes(backfillJob?.status ?? "")}

@@ -34,6 +34,7 @@ const REQUIRED_DAILY_KEYS = [
 ]
 
 const REQUIRED_ACTIVITY_KEYS = ["details", "splits", "split_summaries", "hr_in_timezones"]
+const GARMIN_FETCH_TIMEOUT_MS = 45_000
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -228,11 +229,26 @@ export function getMetricSummary(raw: unknown) {
 
 export async function fetchGarminPayload(garminEmail: string, garminPassword: string, date: string): Promise<GarminPayload> {
   const pythonServiceUrl = process.env.GARMIN_SERVICE_URL || "http://127.0.0.1:8000"
-  const garminRes = await fetch(`${pythonServiceUrl}/api/garmin/sync`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email: garminEmail, password: garminPassword, date }),
-  })
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), GARMIN_FETCH_TIMEOUT_MS)
+
+  let garminRes: Response
+  try {
+    garminRes = await fetch(`${pythonServiceUrl}/api/garmin/sync`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: garminEmail, password: garminPassword, date }),
+      signal: controller.signal,
+    })
+  } catch (error: unknown) {
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new Error(`Garmin 服务请求超时（>${Math.floor(GARMIN_FETCH_TIMEOUT_MS / 1000)}s）`)
+    }
+
+    throw error
+  } finally {
+    clearTimeout(timeout)
+  }
 
   if (!garminRes.ok) {
     const errorData = await garminRes.json().catch(() => ({}))
