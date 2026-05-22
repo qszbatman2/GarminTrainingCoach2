@@ -362,6 +362,104 @@ export function getMetricDisplayValues(raw: unknown) {
   }
 }
 
+export function getActivityDisplayValues(raw: unknown) {
+  return {
+    averageHeartRate: firstNumber(
+      [
+        "summaryDTO.averageHR",
+        "details.averageHR",
+        "details.avgHr",
+        "averageHR",
+        "averageHeartRate",
+        "summary.averageHeartRate",
+      ],
+      raw
+    ),
+    maxHeartRate: firstNumber(
+      [
+        "summaryDTO.maxHR",
+        "details.maxHR",
+        "details.maxHr",
+        "maxHR",
+        "maxHeartRate",
+        "summary.maxHeartRate",
+      ],
+      raw
+    ),
+    aerobicTrainingEffect: firstNumber(
+      [
+        "summaryDTO.aerobicTrainingEffect",
+        "details.aerobicTrainingEffect",
+        "aerobicTrainingEffect",
+        "trainingEffect.aerobic",
+      ],
+      raw
+    ),
+    anaerobicTrainingEffect: firstNumber(
+      [
+        "summaryDTO.anaerobicTrainingEffect",
+        "details.anaerobicTrainingEffect",
+        "anaerobicTrainingEffect",
+        "trainingEffect.anaerobic",
+      ],
+      raw
+    ),
+    trainingLoad: firstNumber(
+      [
+        "summaryDTO.exerciseTrainingLoad",
+        "summaryDTO.activityTrainingLoad",
+        "details.exerciseTrainingLoad",
+        "details.trainingLoad",
+        "exerciseTrainingLoad",
+        "activityTrainingLoad",
+      ],
+      raw
+    ),
+    recoveryHours: firstNumber(
+      [
+        "summaryDTO.recoveryTime",
+        "details.recoveryTime",
+        "recoveryTime",
+        "recommendedRecovery",
+      ],
+      raw
+    ),
+    averageSpeed: firstNumber(
+      [
+        "summaryDTO.averageSpeed",
+        "details.averageSpeed",
+        "averageSpeed",
+      ],
+      raw
+    ),
+    maxSpeed: firstNumber(
+      [
+        "summaryDTO.maxSpeed",
+        "details.maxSpeed",
+        "maxSpeed",
+      ],
+      raw
+    ),
+    averagePaceSeconds: firstNumber(
+      [
+        "summaryDTO.averagePaceInSeconds",
+        "details.averagePaceInSeconds",
+        "averagePaceInSeconds",
+        "summaryDTO.avgPace",
+      ],
+      raw
+    ),
+    sportLabel: firstValue<string>(
+      [
+        "activityType.typeKey",
+        "summaryDTO.activityTypeDTO.typeKey",
+        "details.activityType.typeKey",
+      ],
+      raw
+    ),
+  }
+}
+
 export const DAILY_TREND_GROUPS: TrendMetricGroup[] = [
   {
     key: "recovery",

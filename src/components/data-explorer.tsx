@@ -220,10 +220,6 @@ export function DataExplorer({ userEmail, metrics, activities, initialAnalysisRe
       }),
     [metrics]
   )
-  const metricsAsc = useMemo(() => [...enrichedMetrics].sort((a, b) => a.date.localeCompare(b.date)), [enrichedMetrics])
-  const last7Metrics = useMemo(() => metricsAsc.slice(-7), [metricsAsc])
-  const previous7Metrics = useMemo(() => metricsAsc.slice(-14, -7), [metricsAsc])
-  const last30Metrics = useMemo(() => metricsAsc.slice(-30), [metricsAsc])
 
   const selectedMetric = enrichedMetrics.find((metric) => metric.date === selectedDate) ?? enrichedMetrics[0] ?? null
   const latestActivities = activities.slice(0, 12)
@@ -246,52 +242,6 @@ export function DataExplorer({ userEmail, metrics, activities, initialAnalysisRe
   const heartRateSeries = selectedMetric ? getHeartRateSeries(selectedMetric.raw) : []
   const stressSeries = selectedMetric ? getStressSeries(selectedMetric.raw) : []
   const bodyBatterySeries = selectedMetric ? getBodyBatterySeries(selectedMetric.raw) : []
-  const numberAverage = (values: Array<number | null | undefined>) => {
-    const valid = values.filter((value): value is number => typeof value === "number" && Number.isFinite(value))
-    if (valid.length === 0) {
-      return null
-    }
-
-    return valid.reduce((sum, value) => sum + value, 0) / valid.length
-  }
-  const formatMetric = (value: number | null, suffix = "", digits = 0) => {
-    if (value == null || Number.isNaN(value)) {
-      return "--"
-    }
-
-    return `${value.toFixed(digits)}${suffix}`
-  }
-  const formatDelta = (current: number | null, previous: number | null, suffix = "", digits = 0) => {
-    if (current == null || previous == null) {
-      return "暂无对比"
-    }
-
-    const delta = current - previous
-    const prefix = delta > 0 ? "+" : delta < 0 ? "-" : ""
-    return `${prefix}${Math.abs(delta).toFixed(digits)}${suffix}`
-  }
-  const analysisEvidence = [
-    {
-      label: "7 天睡眠均值",
-      value: formatMetric(numberAverage(last7Metrics.map((metric) => metric.sleepScore))),
-      detail: `较前 7 天 ${formatDelta(numberAverage(last7Metrics.map((metric) => metric.sleepScore)), numberAverage(previous7Metrics.map((metric) => metric.sleepScore)))}`,
-    },
-    {
-      label: "7 天 HRV 均值",
-      value: formatMetric(numberAverage(last7Metrics.map((metric) => metric.hrv)), " ms"),
-      detail: `较前 7 天 ${formatDelta(numberAverage(last7Metrics.map((metric) => metric.hrv)), numberAverage(previous7Metrics.map((metric) => metric.hrv)), " ms")}`,
-    },
-    {
-      label: "7 天静息心率",
-      value: formatMetric(numberAverage(last7Metrics.map((metric) => metric.restingHr)), " bpm"),
-      detail: `平均压力 ${formatMetric(numberAverage(last7Metrics.map((metric) => metric.stress)))}`,
-    },
-    {
-      label: "30 天覆盖率",
-      value: `${last30Metrics.length}/30`,
-      detail: metrics[0] ? `最新同步日 ${metrics[0].date}` : "暂无同步数据",
-    },
-  ]
   const selectedTrendGroup = trendGroups.find((group) => group.key === selectedTrendGroupKey) ?? trendGroups[0] ?? null
   const selectedChart = {
     heartRate: { title: `${selectedMetric?.date ?? "--"} 心率分时图`, unit: "bpm", data: heartRateSeries },

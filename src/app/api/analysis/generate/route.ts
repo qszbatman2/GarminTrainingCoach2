@@ -38,6 +38,7 @@ export async function POST(request: Request) {
             distance: true,
             duration: true,
             date: true,
+            raw: true,
           },
         },
       },

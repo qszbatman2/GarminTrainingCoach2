@@ -1,4 +1,4 @@
-import { getMetricDisplayValues } from "@/lib/garmin-data"
+import { getActivityDisplayValues, getMetricDisplayValues } from "@/lib/garmin-data"
 
 export type DailyMetricInput = {
   id: string
@@ -17,6 +17,7 @@ export type ActivityInput = {
   distance: number | null
   duration: number | null
   date: Date
+  raw?: unknown
 }
 
 type BaselineMetricName = "restingHr" | "hrv" | "sleepScore" | "sleepInterruptions" | "stress"
@@ -27,6 +28,7 @@ type LoadStatus = "balanced" | "high" | "low" | "unknown"
 type RecoveryCapacity = "normal" | "weak" | "unknown"
 
 type MetricDisplayValues = ReturnType<typeof getMetricDisplayValues>
+type ActivityDisplayValues = ReturnType<typeof getActivityDisplayValues>
 
 type EnrichedMetric = DailyMetricInput &
   MetricDisplayValues & {
@@ -35,6 +37,13 @@ type EnrichedMetric = DailyMetricInput &
     remSleepHours: number | null
     awakeDurationMinutes: number | null
     sedentaryMinutes: number | null
+    recoveryHours: number | null
+  }
+
+type EnrichedActivity = ActivityInput &
+  ActivityDisplayValues & {
+    durationMin: number | null
+    distanceKm: number | null
     recoveryHours: number | null
   }
 
@@ -86,6 +95,13 @@ export type TrainingContext = {
     stress: number | null
     respiration: number | null
     bloodOxygen: number | null
+    trainingReadiness: number | null
+    bodyBatteryHigh: number | null
+    bodyBatteryLow: number | null
+    sedentaryMinutes: number | null
+    weight: number | null
+    vo2Max: number | null
+    lactateThresholdHr: number | null
     acuteTrainingLoad: number | null
     chronicTrainingLoad: number | null
     loadRatio: number | null
@@ -117,6 +133,25 @@ export type TrainingContext = {
     source: LoadSource
     recent7dDurationMin: number | null
     recent42dAvgWeekDurationMin: number | null
+    avgTrainingLoad7d: number | null
+    avgAerobicEffect7d: number | null
+    avgAnaerobicEffect7d: number | null
+  }
+  activity: {
+    sessions7d: number
+    latestSession: {
+      date: string
+      type: string
+      name: string
+      durationMin: number | null
+      distanceKm: number | null
+      averageHeartRate: number | null
+      maxHeartRate: number | null
+      aerobicTrainingEffect: number | null
+      anaerobicTrainingEffect: number | null
+      trainingLoad: number | null
+      recoveryHours: number | null
+    } | null
   }
   recovery: {
     recoveryHours: number | null
@@ -244,6 +279,18 @@ function enrichMetric(metric: DailyMetricInput): EnrichedMetric {
   }
 }
 
+function enrichActivity(activity: ActivityInput): EnrichedActivity {
+  const displayValues = getActivityDisplayValues(activity.raw)
+
+  return {
+    ...activity,
+    ...displayValues,
+    durationMin: activity.duration != null ? round(activity.duration / 60, 0) : null,
+    distanceKm: activity.distance != null ? round(activity.distance / 1000, 1) : null,
+    recoveryHours: normalizeRecoveryHours(displayValues.recoveryHours),
+  }
+}
+
 function buildBaselineStats(metrics: EnrichedMetric[], key: BaselineMetricName): BaselineStats {
   const values = metrics.map((metric) => metric[key])
   const mean = average(values)
@@ -260,12 +307,16 @@ function buildBaselineStats(metrics: EnrichedMetric[], key: BaselineMetricName):
 
 function isBaselineEligible(metric: EnrichedMetric) {
   const poorSleep = metric.sleepScore != null && metric.sleepScore < 50
+  const shortSleep = metric.sleepDurationHours != null && metric.sleepDurationHours < 5
+  const tooManyInterruptions = metric.sleepInterruptions != null && metric.sleepInterruptions > 8
   const highStress = metric.stress != null && metric.stress >= 75
+  const lowReadiness = metric.trainingReadiness != null && metric.trainingReadiness < 30
+  const lowOxygen = metric.bloodOxygen != null && metric.bloodOxygen < 92
   const heavyRecovery = metric.recoveryHours != null && metric.recoveryHours >= 72
   const excessiveIntensity = metric.vigorousIntensityMinutes != null && metric.vigorousIntensityMinutes >= 90
   const overload = metric.acuteChronicLoadRatio != null && metric.acuteChronicLoadRatio > 1.5
 
-  return !(poorSleep || highStress || heavyRecovery || excessiveIntensity || overload)
+  return !(poorSleep || shortSleep || tooManyInterruptions || highStress || lowReadiness || lowOxygen || heavyRecovery || excessiveIntensity || overload)
 }
 
 function getMetricAbnormality(options: {
@@ -406,13 +457,23 @@ function getFatigueLevel(score: number | null): TrainingContext["fatigue"]["leve
   return "极度疲劳"
 }
 
-function getMostRecentHighIntensityDate(metrics: EnrichedMetric[]) {
+function getMostRecentHighIntensityDate(metrics: EnrichedMetric[], activities: EnrichedActivity[]) {
   for (let index = metrics.length - 1; index >= 0; index -= 1) {
     const metric = metrics[index]
+    const dayKey = toDateKey(metric.date)
+    const dayActivities = activities.filter((activity) => toDateKey(activity.date) === dayKey)
+    const highActivityLoad = dayActivities.some(
+      (activity) =>
+        (activity.trainingLoad != null && activity.trainingLoad >= 180) ||
+        (activity.aerobicTrainingEffect != null && activity.aerobicTrainingEffect >= 3.5) ||
+        (activity.anaerobicTrainingEffect != null && activity.anaerobicTrainingEffect >= 2.5) ||
+        (activity.recoveryHours != null && activity.recoveryHours >= 24)
+    )
     const highIntensity =
       (metric.vigorousIntensityMinutes != null && metric.vigorousIntensityMinutes >= 30) ||
       (metric.recoveryHours != null && metric.recoveryHours >= 24) ||
-      (metric.acuteChronicLoadRatio != null && metric.acuteChronicLoadRatio > 1.2)
+      (metric.acuteChronicLoadRatio != null && metric.acuteChronicLoadRatio > 1.2) ||
+      highActivityLoad
 
     if (highIntensity) {
       return metric.date
@@ -480,7 +541,12 @@ function buildFallbackReasonAnalysis(context: TrainingContext) {
   }
   if (context.today.sleepScore != null) {
     parts.push(
-      `睡眠评分 ${context.today.sleepScore} 分${context.today.sleepInterruptions != null ? `，睡眠中断 ${context.today.sleepInterruptions} 次` : ""}`
+      `睡眠评分 ${context.today.sleepScore} 分${context.today.sleepInterruptions != null ? `，睡眠中断 ${context.today.sleepInterruptions} 次` : ""}${context.today.sleepDurationHours != null ? `，总睡眠 ${context.today.sleepDurationHours} 小时` : ""}`
+    )
+  }
+  if (context.today.bloodOxygen != null || context.today.trainingReadiness != null) {
+    parts.push(
+      `辅助恢复信号${context.today.bloodOxygen != null ? `：夜间血氧 ${context.today.bloodOxygen}%` : ""}${context.today.trainingReadiness != null ? `${context.today.bloodOxygen != null ? "，" : "："}训练准备度 ${context.today.trainingReadiness}` : ""}`
     )
   }
   if (context.fatigue.totalScore != null) {
@@ -488,6 +554,11 @@ function buildFallbackReasonAnalysis(context: TrainingContext) {
   }
   if (context.load.loadRatio != null) {
     parts.push(`负荷比值 ${context.load.loadRatio}，当前负荷${context.load.loadStatus === "balanced" ? "基本均衡" : context.load.loadStatus === "high" ? "偏高" : context.load.loadStatus === "low" ? "偏低" : "需继续观察"}`)
+  }
+  if (context.activity.latestSession) {
+    parts.push(
+      `最近一次训练 ${context.activity.latestSession.name}，时长 ${context.activity.latestSession.durationMin ?? "--"} 分钟${context.activity.latestSession.aerobicTrainingEffect != null ? `，有氧训练效果 ${context.activity.latestSession.aerobicTrainingEffect}` : ""}${context.activity.latestSession.recoveryHours != null ? `，建议恢复 ${context.activity.latestSession.recoveryHours} 小时` : ""}`
+    )
   }
   parts.push(context.decision.ruleReason)
 
@@ -505,8 +576,9 @@ function fallbackAnalysis(context: TrainingContext): TrainingAnalysisResult {
 
 export function buildTrainingContext(metrics: DailyMetricInput[], activities: ActivityInput[]): TrainingContext {
   const sortedMetrics = [...metrics].sort((a, b) => a.date.getTime() - b.date.getTime()).map(enrichMetric)
-  const sortedActivities = [...activities].sort((a, b) => a.date.getTime() - b.date.getTime())
+  const sortedActivities = [...activities].sort((a, b) => a.date.getTime() - b.date.getTime()).map(enrichActivity)
   const latestMetric = sortedMetrics[sortedMetrics.length - 1]
+  const latestActivity = sortedActivities[sortedActivities.length - 1] ?? null
 
   if (!latestMetric) {
     return {
@@ -539,6 +611,13 @@ export function buildTrainingContext(metrics: DailyMetricInput[], activities: Ac
         stress: null,
         respiration: null,
         bloodOxygen: null,
+        trainingReadiness: null,
+        bodyBatteryHigh: null,
+        bodyBatteryLow: null,
+        sedentaryMinutes: null,
+        weight: null,
+        vo2Max: null,
+        lactateThresholdHr: null,
         acuteTrainingLoad: null,
         chronicTrainingLoad: null,
         loadRatio: null,
@@ -564,6 +643,13 @@ export function buildTrainingContext(metrics: DailyMetricInput[], activities: Ac
         source: "missing",
         recent7dDurationMin: null,
         recent42dAvgWeekDurationMin: null,
+        avgTrainingLoad7d: null,
+        avgAerobicEffect7d: null,
+        avgAnaerobicEffect7d: null,
+      },
+      activity: {
+        sessions7d: 0,
+        latestSession: null,
       },
       recovery: {
         recoveryHours: null,
@@ -596,9 +682,12 @@ export function buildTrainingContext(metrics: DailyMetricInput[], activities: Ac
 
   const recentActivities7d = getWindowItems(sortedActivities, latestMetric.date, 7)
   const recentActivities42d = getWindowItems(sortedActivities, latestMetric.date, 42)
-  const recent7dDurationMin = sum(recentActivities7d.map((activity) => (activity.duration != null ? activity.duration / 60 : null)))
-  const recent42dTotalDurationMin = sum(recentActivities42d.map((activity) => (activity.duration != null ? activity.duration / 60 : null)))
+  const recent7dDurationMin = sum(recentActivities7d.map((activity) => activity.durationMin))
+  const recent42dTotalDurationMin = sum(recentActivities42d.map((activity) => activity.durationMin))
   const recent42dAvgWeekDurationMin = recent42dTotalDurationMin != null ? recent42dTotalDurationMin / 6 : null
+  const avgTrainingLoad7d = average(recentActivities7d.map((activity) => activity.trainingLoad))
+  const avgAerobicEffect7d = average(recentActivities7d.map((activity) => activity.aerobicTrainingEffect))
+  const avgAnaerobicEffect7d = average(recentActivities7d.map((activity) => activity.anaerobicTrainingEffect))
 
   const acuteTrainingLoad = latestMetric.acuteTrainingLoad ?? round(recent7dDurationMin, 0)
   const chronicTrainingLoad = latestMetric.chronicTrainingLoad ?? round(recent42dAvgWeekDurationMin, 0)
@@ -668,7 +757,10 @@ export function buildTrainingContext(metrics: DailyMetricInput[], activities: Ac
     0
   )
 
-  const lastHighIntensityDate = getMostRecentHighIntensityDate(getWindowItems(sortedMetrics, latestMetric.date, 14))
+  const lastHighIntensityDate = getMostRecentHighIntensityDate(
+    getWindowItems(sortedMetrics, latestMetric.date, 14),
+    getWindowItems(sortedActivities, latestMetric.date, 14)
+  )
   const hoursToBaseline = lastHighIntensityDate ? getHoursToBaseline(sortedMetrics, lastHighIntensityDate, baseline.restingHr.mean, baseline.hrv.mean) : null
   const recoveryCapacity = getRecoveryCapacity(hoursToBaseline, latestMetric.date, lastHighIntensityDate)
 
@@ -697,6 +789,26 @@ export function buildTrainingContext(metrics: DailyMetricInput[], activities: Ac
     ruleReason = "7 天急性负荷明显高于 42 天慢性负荷，存在较高过度训练风险。"
   }
 
+  const latestRecoveryHours = latestMetric.recoveryHours ?? latestActivity?.recoveryHours ?? null
+  if (latestRecoveryHours != null && latestRecoveryHours >= 48 && shouldTrain !== "不训") {
+    shouldTrain = "慎训"
+    todayAdvice = "建议继续恢复，避免高强度训练。"
+    ruleReason = "最近一次高强度训练后的建议恢复时长仍偏长，身体尚未完全恢复。"
+  }
+
+  if (latestActivity && shouldTrain === "可训") {
+    const highRecentStimulus =
+      (latestActivity.aerobicTrainingEffect != null && latestActivity.aerobicTrainingEffect >= 4.0) ||
+      (latestActivity.anaerobicTrainingEffect != null && latestActivity.anaerobicTrainingEffect >= 3.0) ||
+      (latestActivity.trainingLoad != null && latestActivity.trainingLoad >= 250)
+
+    if (highRecentStimulus && latestRecoveryHours != null && latestRecoveryHours >= 24) {
+      shouldTrain = "慎训"
+      todayAdvice = "近期刺激较大，今天建议控制强度。"
+      ruleReason = "最近一次训练刺激偏大且恢复窗口仍在，今天更适合保守安排。"
+    }
+  }
+
   const missingData: string[] = []
   if (baseline.validDays < 7) {
     missingData.push("近 28 天有效基线样本不足，已回退到原始 28 天窗口估算。")
@@ -718,6 +830,21 @@ export function buildTrainingContext(metrics: DailyMetricInput[], activities: Ac
   }
   if (latestMetric.sleepInterruptions == null) {
     missingData.push("缺少睡眠中断次数，睡眠质量判断不完整。")
+  }
+  if (latestMetric.deepSleepHours == null) {
+    missingData.push("缺少深睡数据，无法进一步校验恢复质量。")
+  }
+  if (latestMetric.remSleepHours == null) {
+    missingData.push("缺少 REM 睡眠数据，睡眠结构判断不完整。")
+  }
+  if (latestMetric.bloodOxygen == null) {
+    missingData.push("缺少夜间血氧数据，恢复信号少一层校验。")
+  }
+  if (latestMetric.trainingReadiness == null) {
+    missingData.push("缺少训练准备度数据，恢复结论偏保守。")
+  }
+  if (latestActivity && latestActivity.trainingLoad == null && latestActivity.aerobicTrainingEffect == null && latestActivity.anaerobicTrainingEffect == null) {
+    missingData.push("最近训练缺少训练效果或训练负荷字段，活动级刺激判断有限。")
   }
 
   return {
@@ -741,10 +868,17 @@ export function buildTrainingContext(metrics: DailyMetricInput[], activities: Ac
       stress: latestMetric.stress,
       respiration: latestMetric.respiration,
       bloodOxygen: latestMetric.bloodOxygen,
+      trainingReadiness: latestMetric.trainingReadiness,
+      bodyBatteryHigh: latestMetric.bodyBatteryHigh,
+      bodyBatteryLow: latestMetric.bodyBatteryLow,
+      sedentaryMinutes: latestMetric.sedentaryMinutes,
+      weight: latestMetric.weight,
+      vo2Max: latestMetric.vo2Max,
+      lactateThresholdHr: latestMetric.lactateThresholdHr,
       acuteTrainingLoad: round(acuteTrainingLoad, 0),
       chronicTrainingLoad: round(chronicTrainingLoad, 0),
       loadRatio: round(loadRatio, 2),
-      recoveryHours: latestMetric.recoveryHours,
+      recoveryHours: latestRecoveryHours,
     },
     abnormalities,
     fatigue: {
@@ -760,9 +894,30 @@ export function buildTrainingContext(metrics: DailyMetricInput[], activities: Ac
       source: loadSource,
       recent7dDurationMin: round(recent7dDurationMin, 0),
       recent42dAvgWeekDurationMin: round(recent42dAvgWeekDurationMin, 0),
+      avgTrainingLoad7d: round(avgTrainingLoad7d, 0),
+      avgAerobicEffect7d: round(avgAerobicEffect7d, 1),
+      avgAnaerobicEffect7d: round(avgAnaerobicEffect7d, 1),
+    },
+    activity: {
+      sessions7d: recentActivities7d.length,
+      latestSession: latestActivity
+        ? {
+            date: toDateKey(latestActivity.date),
+            type: latestActivity.type,
+            name: latestActivity.name,
+            durationMin: latestActivity.durationMin,
+            distanceKm: latestActivity.distanceKm,
+            averageHeartRate: latestActivity.averageHeartRate,
+            maxHeartRate: latestActivity.maxHeartRate,
+            aerobicTrainingEffect: latestActivity.aerobicTrainingEffect,
+            anaerobicTrainingEffect: latestActivity.anaerobicTrainingEffect,
+            trainingLoad: latestActivity.trainingLoad,
+            recoveryHours: latestActivity.recoveryHours,
+          }
+        : null,
     },
     recovery: {
-      recoveryHours: latestMetric.recoveryHours,
+      recoveryHours: latestRecoveryHours,
       lastHighIntensityDate: lastHighIntensityDate ? toDateKey(lastHighIntensityDate) : null,
       hoursToBaseline,
       recoveryCapacity,

@@ -14,7 +14,7 @@ import {
 } from "@/lib/training-analysis"
 
 const REPORT_TYPE = "latest"
-const ANALYSIS_VERSION = "training-rule-v2"
+const ANALYSIS_VERSION = "training-rule-v3"
 
 function normalizeJson<T>(value: unknown) {
   return JSON.parse(JSON.stringify(value)) as T
@@ -38,6 +38,7 @@ function serializeActivities(activities: ActivityInput[]) {
     type: activity.type,
     distance: activity.distance,
     duration: activity.duration,
+    raw: activity.raw,
   }))
 }
 

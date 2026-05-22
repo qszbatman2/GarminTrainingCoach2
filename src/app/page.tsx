@@ -48,6 +48,7 @@ export default async function Home() {
           distance: activity.distance,
           duration: activity.duration,
           date: activity.date,
+          raw: activity.raw,
         })),
       })
     } catch (error) {
