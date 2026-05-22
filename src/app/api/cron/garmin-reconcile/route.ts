@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 
+import { processBackfillJob } from "@/lib/backfill-jobs"
 import prisma from "@/lib/prisma"
 import { getDateKey, syncGarminDateForUser } from "@/lib/garmin-sync"
 
@@ -43,6 +44,20 @@ export async function GET(request: Request) {
         garminPassword: true,
       },
     })
+    const pendingJobs = await prisma.backfillJob.findMany({
+      where: {
+        status: {
+          in: ["pending", "running"],
+        },
+      },
+      orderBy: {
+        createdAt: "asc",
+      },
+      take: 5,
+      select: {
+        id: true,
+      },
+    })
 
     const results: Array<{ email: string; date: string; success: boolean; error?: string }> = []
     for (const user of users) {
@@ -65,6 +80,20 @@ export async function GET(request: Request) {
       }
     }
 
+    const jobResults: Array<{ jobId: string; success: boolean; error?: string }> = []
+    for (const job of pendingJobs) {
+      try {
+        await processBackfillJob(job.id)
+        jobResults.push({ jobId: job.id, success: true })
+      } catch (error: unknown) {
+        jobResults.push({
+          jobId: job.id,
+          success: false,
+          error: error instanceof Error ? error.message : "任务续跑失败",
+        })
+      }
+    }
+
     return NextResponse.json({
       success: true,
       targetDate,
@@ -72,6 +101,8 @@ export async function GET(request: Request) {
       successCount: results.filter((item) => item.success).length,
       failureCount: results.filter((item) => !item.success).length,
       results,
+      backfillJobsProcessed: jobResults.length,
+      backfillJobResults: jobResults,
     })
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "定时补拉失败"

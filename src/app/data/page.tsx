@@ -21,6 +21,10 @@ export default async function DataPage() {
       activities: {
         orderBy: { date: "desc" },
       },
+      backfillJobs: {
+        orderBy: { createdAt: "desc" },
+        take: 1,
+      },
     },
   })
 
@@ -72,6 +76,26 @@ export default async function DataPage() {
             stress: metric.stress,
             raw: metric.raw,
           }))}
+          initialBackfillJob={
+            user.backfillJobs[0]
+              ? {
+                  id: user.backfillJobs[0].id,
+                  status: user.backfillJobs[0].status,
+                  totalDates: user.backfillJobs[0].totalDates,
+                  currentIndex: user.backfillJobs[0].currentIndex,
+                  syncedDates: user.backfillJobs[0].syncedDates,
+                  skippedDates: user.backfillJobs[0].skippedDates,
+                  failedDates: user.backfillJobs[0].failedDates,
+                  message: user.backfillJobs[0].message,
+                  lastError: user.backfillJobs[0].lastError,
+                  createdAt: user.backfillJobs[0].createdAt.toISOString(),
+                  updatedAt: user.backfillJobs[0].updatedAt.toISOString(),
+                  startedAt: user.backfillJobs[0].startedAt?.toISOString() ?? null,
+                  finishedAt: user.backfillJobs[0].finishedAt?.toISOString() ?? null,
+                  heartbeatAt: user.backfillJobs[0].heartbeatAt?.toISOString() ?? null,
+                }
+              : null
+          }
           userEmail={user.email}
         />
       </div>

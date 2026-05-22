@@ -1,7 +1,8 @@
 'use client'
 
-import { useMemo, useState } from "react"
+import Link from "next/link"
 import { useRouter } from "next/navigation"
+import { useEffect, useMemo, useState } from "react"
 
 import { getBodyBatterySeries, getHeartRateSeries, getMetricDisplayValues, getStressSeries, type NumericPoint } from "@/lib/garmin-data"
 
@@ -30,6 +31,24 @@ type DataExplorerProps = {
   userEmail: string
   metrics: MetricItem[]
   activities: ActivityItem[]
+  initialBackfillJob: BackfillJobSnapshot | null
+}
+
+type BackfillJobSnapshot = {
+  id: string
+  status: string
+  totalDates: number
+  currentIndex: number
+  syncedDates: unknown
+  skippedDates: unknown
+  failedDates: unknown
+  message: string | null
+  lastError?: string | null
+  createdAt: string
+  updatedAt: string
+  startedAt?: string | null
+  finishedAt?: string | null
+  heartbeatAt?: string | null
 }
 
 type TrendCardProps = {
@@ -130,6 +149,10 @@ function TrendCard({ title, subtitle, unit, data }: TrendCardProps) {
   )
 }
 
+function jsonArrayCount(value: unknown) {
+  return Array.isArray(value) ? value.length : 0
+}
+
 function DetailChart({ title, unit, data }: { title: string; unit: string; data: NumericPoint[] }) {
   const polyline = buildPolyline(data)
 
@@ -170,11 +193,12 @@ function DetailChart({ title, unit, data }: { title: string; unit: string; data:
   )
 }
 
-export function DataExplorer({ userEmail, metrics, activities }: DataExplorerProps) {
+export function DataExplorer({ userEmail, metrics, activities, initialBackfillJob }: DataExplorerProps) {
   const router = useRouter()
   const [selectedDate, setSelectedDate] = useState(metrics[0]?.date ?? "")
   const [backfillLoading, setBackfillLoading] = useState(false)
   const [backfillResult, setBackfillResult] = useState("")
+  const [backfillJob, setBackfillJob] = useState<BackfillJobSnapshot | null>(initialBackfillJob)
 
   const enrichedMetrics = useMemo(
     () =>
@@ -245,6 +269,35 @@ export function DataExplorer({ userEmail, metrics, activities }: DataExplorerPro
   const stressSeries = selectedMetric ? getStressSeries(selectedMetric.raw) : []
   const bodyBatterySeries = selectedMetric ? getBodyBatterySeries(selectedMetric.raw) : []
 
+  useEffect(() => {
+    if (!backfillJob || !["pending", "running"].includes(backfillJob.status)) {
+      return
+    }
+
+    const timer = window.setInterval(async () => {
+      try {
+        const response = await fetch(`/api/garmin-backfill/${backfillJob.id}`, {
+          cache: "no-store",
+        })
+        const data = await response.json()
+
+        if (!response.ok) {
+          throw new Error(data.error || "获取任务状态失败")
+        }
+
+        setBackfillJob(data.job)
+
+        if (!["pending", "running"].includes(data.job?.status ?? "")) {
+          router.refresh()
+        }
+      } catch {
+        window.clearInterval(timer)
+      }
+    }, 3000)
+
+    return () => window.clearInterval(timer)
+  }, [backfillJob, router])
+
   async function handleBackfill() {
     setBackfillLoading(true)
     setBackfillResult("")
@@ -261,8 +314,8 @@ export function DataExplorer({ userEmail, metrics, activities }: DataExplorerPro
         throw new Error(data.error || "补拉失败")
       }
 
-      setBackfillResult(`检查 30 天，补拉 ${data.syncedCount} 天，跳过 ${data.skippedCount} 天。`)
-      router.refresh()
+      setBackfillJob(data.job)
+      setBackfillResult(data.job?.message || "后台补拉任务已创建，服务端开始执行。")
     } catch (error: unknown) {
       setBackfillResult(error instanceof Error ? error.message : "补拉失败")
     } finally {
@@ -295,19 +348,52 @@ export function DataExplorer({ userEmail, metrics, activities }: DataExplorerPro
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <h2 className="text-2xl font-semibold tracking-tight">补拉缺失/不完整数据</h2>
-            <p className="mt-2 text-sm text-slate-500">会检查最近 30 天里缺失日期的数据，以及已同步但缺少关键字段或活动详情的数据，并自动重拉。</p>
+            <p className="mt-2 text-sm text-slate-500">点击后先创建任务，随后由服务端分批执行；即使你切页面，任务也会继续，回来后仍能看到进度。</p>
           </div>
-          <button
-            className="rounded-2xl bg-slate-950 px-5 py-3 text-sm font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
-            disabled={backfillLoading}
-            onClick={handleBackfill}
-            type="button"
-          >
-            {backfillLoading ? "补拉中..." : "一键补拉最近 30 天"}
-          </button>
+          <div className="flex flex-wrap gap-3">
+            <Link
+              className="rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+              href="/data/calendar"
+            >
+              查看数据日历
+            </Link>
+            <button
+              className="rounded-2xl bg-slate-950 px-5 py-3 text-sm font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+              disabled={backfillLoading || ["pending", "running"].includes(backfillJob?.status ?? "")}
+              onClick={handleBackfill}
+              type="button"
+            >
+              {backfillLoading ? "创建任务中..." : ["pending", "running"].includes(backfillJob?.status ?? "") ? "补拉任务执行中" : "一键补拉最近 30 天"}
+            </button>
+          </div>
         </div>
 
         {backfillResult ? <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">{backfillResult}</div> : null}
+
+        {backfillJob ? (
+          <div className="mt-4 grid gap-4 md:grid-cols-4">
+            <div className="rounded-3xl bg-slate-50 px-4 py-4">
+              <div className="text-xs uppercase tracking-[0.2em] text-slate-400">任务状态</div>
+              <div className="mt-2 text-lg font-semibold">{backfillJob.status}</div>
+            </div>
+            <div className="rounded-3xl bg-slate-50 px-4 py-4">
+              <div className="text-xs uppercase tracking-[0.2em] text-slate-400">进度</div>
+              <div className="mt-2 text-lg font-semibold">
+                {backfillJob.currentIndex}/{backfillJob.totalDates}
+              </div>
+            </div>
+            <div className="rounded-3xl bg-slate-50 px-4 py-4">
+              <div className="text-xs uppercase tracking-[0.2em] text-slate-400">已补成功</div>
+              <div className="mt-2 text-lg font-semibold">{jsonArrayCount(backfillJob.syncedDates)}</div>
+            </div>
+            <div className="rounded-3xl bg-slate-50 px-4 py-4">
+              <div className="text-xs uppercase tracking-[0.2em] text-slate-400">失败日期</div>
+              <div className="mt-2 text-lg font-semibold">{jsonArrayCount(backfillJob.failedDates)}</div>
+            </div>
+          </div>
+        ) : null}
+        {backfillJob?.message ? <div className="mt-4 text-sm text-slate-500">{backfillJob.message}</div> : null}
+        {backfillJob?.lastError ? <div className="mt-2 text-sm text-rose-600">最近错误：{backfillJob.lastError}</div> : null}
       </section>
 
       <section className="space-y-4">

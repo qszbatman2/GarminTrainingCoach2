@@ -22,6 +22,7 @@ model User {
   garminPassword String?       // 简单起见MVP先明文/简单加密存储
   metrics        DailyMetric[]
   activities     Activity[]
+  backfillJobs   BackfillJob[]
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
 }
@@ -53,4 +54,25 @@ model Activity {
   date      DateTime
   raw       Json
   createdAt DateTime @default(now())
+}
+
+model BackfillJob {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id])
+  status       String
+  days         Int
+  totalDates   Int
+  currentIndex Int      @default(0)
+  targetDates  Json
+  syncedDates  Json
+  skippedDates Json
+  failedDates  Json
+  message      String?
+  lastError    String?
+  startedAt    DateTime?
+  finishedAt   DateTime?
+  heartbeatAt  DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 }
