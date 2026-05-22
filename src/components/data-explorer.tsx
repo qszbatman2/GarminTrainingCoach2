@@ -4,6 +4,7 @@ import Link from "next/link"
 import { useMemo, useState } from "react"
 
 import { AITrainingReport } from "@/components/ai-training-report"
+import { MetricTile, SubtleCard, SurfaceCard } from "@/components/design-system"
 import {
   buildDailyTrendGroups,
   getBodyBatterySeries,
@@ -143,16 +144,16 @@ function TrendCard({ title, subtitle, unit, data }: TrendCardProps) {
   const polyline = buildPolyline(data)
 
   return (
-    <article className="rounded-[1.75rem] border border-slate-200 bg-white p-6 shadow-[0_18px_50px_rgba(15,23,42,0.07)]">
+    <article className="rounded-[1.75rem] border border-white/10 bg-white/[0.04] p-6 shadow-[0_18px_50px_rgba(15,23,42,0.24)] backdrop-blur-xl">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <div className="text-sm text-slate-500">{title}</div>
-          <div className="mt-2 text-3xl font-semibold tracking-tight">
+          <div className="text-sm text-slate-400">{title}</div>
+          <div className="mt-2 text-3xl font-semibold tracking-tight text-white">
             {latest ?? "--"}
-            {latest != null ? <span className="ml-2 text-sm text-slate-400">{unit}</span> : null}
+            {latest != null ? <span className="ml-2 text-sm text-slate-500">{unit}</span> : null}
           </div>
         </div>
-        <div className="text-xs text-slate-400">{subtitle}</div>
+        <div className="text-xs text-slate-500">{subtitle}</div>
       </div>
 
       {data.length >= 2 ? (
@@ -167,13 +168,13 @@ function TrendCard({ title, subtitle, unit, data }: TrendCardProps) {
               strokeWidth="1.5"
             />
           </svg>
-          <div className="mt-3 flex items-center justify-between text-xs text-slate-400">
+          <div className="mt-3 flex items-center justify-between text-xs text-slate-500">
             <span>{data[0]?.label}</span>
             <span>{data[data.length - 1]?.label}</span>
           </div>
         </>
       ) : (
-        <div className="mt-8 rounded-3xl bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">至少需要 2 个数据点才会绘制趋势图</div>
+        <div className="mt-8 rounded-3xl bg-white/[0.05] px-4 py-8 text-center text-sm text-slate-400">至少需要 2 个数据点才会绘制趋势图</div>
       )}
     </article>
   )
@@ -183,13 +184,13 @@ function TrendGroupSection({ title, description, metrics, defaultOpen = true }: 
   const [open, setOpen] = useState(defaultOpen)
 
   return (
-    <section className="rounded-[1.75rem] border border-slate-200 bg-white p-6 shadow-[0_18px_50px_rgba(15,23,42,0.07)]">
+    <section className="rounded-[1.75rem] border border-white/10 bg-white/[0.04] p-6 shadow-[0_18px_50px_rgba(15,23,42,0.24)] backdrop-blur-xl">
       <button className="flex w-full items-start justify-between gap-4 text-left" onClick={() => setOpen((value) => !value)} type="button">
         <div>
-          <h3 className="text-xl font-semibold tracking-tight">{title}</h3>
-          <p className="mt-2 text-sm text-slate-500">{description}</p>
+          <h3 className="text-xl font-semibold tracking-tight text-white">{title}</h3>
+          <p className="mt-2 text-sm text-slate-400">{description}</p>
         </div>
-        <span className="rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-600">{open ? "收起" : "展开"}</span>
+        <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs text-slate-300">{open ? "收起" : "展开"}</span>
       </button>
 
       {open ? (
@@ -211,15 +212,15 @@ function DetailChart({ title, unit, data }: { title: string; unit: string; data:
   const polyline = buildPolyline(data)
 
   return (
-    <article className="rounded-[1.75rem] border border-slate-200 bg-white p-6 shadow-[0_18px_50px_rgba(15,23,42,0.07)]">
+    <article className="rounded-[1.75rem] border border-white/10 bg-white/[0.04] p-6 shadow-[0_18px_50px_rgba(15,23,42,0.24)] backdrop-blur-xl">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h3 className="text-lg font-semibold text-slate-900">{title}</h3>
-          <p className="mt-2 text-sm text-slate-500">
+          <h3 className="text-lg font-semibold text-white">{title}</h3>
+          <p className="mt-2 text-sm text-slate-400">
             {data.length > 0 ? `已解析 ${data.length} 个时间点` : "当前原始数据里没有解析出可绘图时间序列"}
           </p>
         </div>
-        <span className="rounded-full bg-slate-50 px-3 py-1 text-xs text-slate-500">{unit}</span>
+        <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs text-slate-400">{unit}</span>
       </div>
 
       {data.length >= 2 ? (
@@ -234,14 +235,14 @@ function DetailChart({ title, unit, data }: { title: string; unit: string; data:
               strokeWidth="1.5"
             />
           </svg>
-          <div className="mt-3 flex items-center justify-between text-xs text-slate-400">
+          <div className="mt-3 flex items-center justify-between text-xs text-slate-500">
             <span>{data[0]?.label}</span>
             <span>{data[Math.floor(data.length / 2)]?.label}</span>
             <span>{data[data.length - 1]?.label}</span>
           </div>
         </>
       ) : (
-        <div className="mt-6 rounded-3xl bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">这一天暂时没有可用的分时数据。</div>
+        <div className="mt-6 rounded-3xl bg-white/[0.05] px-4 py-8 text-center text-sm text-slate-400">这一天暂时没有可用的分时数据。</div>
       )}
     </article>
   )
@@ -390,61 +391,55 @@ export function DataExplorer({ userEmail, metrics, activities, initialAnalysisRe
   return (
     <>
       <section className="grid gap-6 xl:grid-cols-[1.25fr_0.75fr]">
-        <article className="rounded-[2rem] border border-slate-200 bg-white p-7 shadow-[0_18px_50px_rgba(15,23,42,0.07)]">
+        <SurfaceCard className="p-7">
           <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
             <div>
-              <div className="text-xs uppercase tracking-[0.25em] text-cyan-700">Executive Summary</div>
-              <h2 className="mt-3 text-3xl font-semibold tracking-tight text-slate-950">先看关键结论，再下钻趋势和单日详情</h2>
-              <p className="mt-3 max-w-3xl text-sm leading-7 text-slate-500">
+              <div className="text-xs uppercase tracking-[0.25em] text-cyan-300/72">Executive Summary</div>
+              <h2 className="mt-3 text-3xl font-semibold tracking-tight text-white">先看关键结论，再下钻趋势和单日详情</h2>
+              <p className="mt-3 max-w-3xl text-sm leading-7 text-slate-300">
                 这个页面现在优先回答 3 个问题：最近状态如何、关键指标怎么变化、数据覆盖是否足够支撑判断。
               </p>
             </div>
             <div className="flex flex-wrap gap-3">
               <Link
-                className="rounded-full border border-slate-200 bg-white px-5 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+                className="rounded-full border border-white/10 bg-white/[0.04] px-5 py-3 text-sm font-medium text-slate-200 transition hover:bg-white/[0.08]"
                 href="/data/calendar"
               >
                 查看数据日历
               </Link>
-              <Link className="rounded-full bg-slate-950 px-5 py-3 text-sm font-medium text-white transition hover:bg-slate-800" href="/data/sync">
+              <Link className="rounded-full bg-cyan-300 px-5 py-3 text-sm font-medium text-slate-950 transition hover:bg-cyan-200" href="/data/sync">
                 查看同步状态
               </Link>
             </div>
           </div>
 
           <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-            {overviewCards.map((card) => (
-              <article className="rounded-[1.5rem] border border-slate-200 bg-slate-50/70 p-5" key={card.title}>
-                <div className="text-sm text-slate-500">{card.title}</div>
-                <div className="mt-3 text-3xl font-semibold tracking-tight text-slate-950">{card.value}</div>
-                <div className="mt-2 text-sm text-slate-500">{card.detail}</div>
-              </article>
-            ))}
+            {overviewCards.map((card) => <MetricTile detail={card.detail} key={card.title} label={card.title} value={card.value} />)}
           </div>
-        </article>
+        </SurfaceCard>
 
-        <article className="rounded-[2rem] border border-slate-200 bg-white p-7 shadow-[0_18px_50px_rgba(15,23,42,0.07)]">
+        <SurfaceCard className="p-7">
           <div className="text-xs uppercase tracking-[0.25em] text-slate-400">Key Takeaways</div>
           <div className="mt-4 space-y-4">
             {keyTakeaways.map((item) => (
-              <div className="rounded-[1.5rem] border border-slate-200 bg-slate-50/80 p-5" key={item.title}>
-                <div className="text-sm font-semibold text-slate-900">{item.title}</div>
-                <p className="mt-2 text-sm leading-6 text-slate-500">{item.content}</p>
-              </div>
+              <SubtleCard key={item.title}>
+                <div className="text-sm font-semibold text-white">{item.title}</div>
+                <p className="mt-2 text-sm leading-6 text-slate-400">{item.content}</p>
+              </SubtleCard>
             ))}
           </div>
-          <div className="mt-4 rounded-[1.5rem] border border-dashed border-slate-200 px-5 py-4 text-sm text-slate-500">
-            当前账号：<span className="font-medium text-slate-700">{userEmail}</span>
+          <div className="mt-4 rounded-[1.5rem] border border-dashed border-white/10 px-5 py-4 text-sm text-slate-400">
+            当前账号：<span className="font-medium text-slate-200">{userEmail}</span>
           </div>
-        </article>
+        </SurfaceCard>
       </section>
 
       <AITrainingReport initialReport={initialAnalysisReport} />
 
       <section className="space-y-4">
         <div>
-          <h2 className="text-2xl font-semibold tracking-tight">日级趋势图</h2>
-          <p className="mt-2 text-sm text-slate-500">先用分组看整体状态，再进入单个指标。每张图都隐含了时间趋势、最新值和样本覆盖天数。</p>
+          <h2 className="text-2xl font-semibold tracking-tight text-white">日级趋势图</h2>
+          <p className="mt-2 text-sm text-slate-400">先用分组看整体状态，再进入单个指标。每张图都隐含了时间趋势、最新值和样本覆盖天数。</p>
         </div>
         <div className="space-y-4">
           {trendGroups.map((group, index) => (
@@ -462,14 +457,14 @@ export function DataExplorer({ userEmail, metrics, activities, initialAnalysisRe
       <section className="space-y-4">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
-            <h2 className="text-2xl font-semibold tracking-tight">单日深度分析</h2>
-            <p className="mt-2 text-sm text-slate-500">当你想追某一天状态时，在这里看该日的核心指标和分时变化，不用直接啃 Raw JSON。</p>
+            <h2 className="text-2xl font-semibold tracking-tight text-white">单日深度分析</h2>
+            <p className="mt-2 text-sm text-slate-400">当你想追某一天状态时，在这里看该日的核心指标和分时变化，不用直接啃 Raw JSON。</p>
           </div>
           <div className="flex flex-wrap gap-2">
             {enrichedMetrics.slice(0, 12).map((metric) => (
               <button
                 className={`rounded-full px-4 py-2 text-sm transition ${
-                  metric.date === selectedMetric?.date ? "bg-slate-950 text-white" : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                  metric.date === selectedMetric?.date ? "bg-cyan-300 text-slate-950" : "border border-white/10 bg-white/[0.04] text-slate-200 hover:bg-white/[0.08]"
                 }`}
                 key={metric.id}
                 onClick={() => setSelectedDate(metric.date)}
@@ -484,34 +479,13 @@ export function DataExplorer({ userEmail, metrics, activities, initialAnalysisRe
         {selectedMetric ? (
           <>
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
-              <article className="rounded-[1.75rem] border border-slate-200 bg-white p-5 shadow-[0_18px_50px_rgba(15,23,42,0.07)]">
-                <div className="text-sm text-slate-500">步数</div>
-                <div className="mt-2 text-2xl font-semibold">{selectedMetric.steps ?? "--"}</div>
-              </article>
-              <article className="rounded-[1.75rem] border border-slate-200 bg-white p-5 shadow-[0_18px_50px_rgba(15,23,42,0.07)]">
-                <div className="text-sm text-slate-500">体重</div>
-                <div className="mt-2 text-2xl font-semibold">{selectedMetric.weight != null ? `${selectedMetric.weight.toFixed(1)} kg` : "--"}</div>
-              </article>
-              <article className="rounded-[1.75rem] border border-slate-200 bg-white p-5 shadow-[0_18px_50px_rgba(15,23,42,0.07)]">
-                <div className="text-sm text-slate-500">训练准备度</div>
-                <div className="mt-2 text-2xl font-semibold">{selectedMetric.trainingReadiness ?? "--"}</div>
-              </article>
-              <article className="rounded-[1.75rem] border border-slate-200 bg-white p-5 shadow-[0_18px_50px_rgba(15,23,42,0.07)]">
-                <div className="text-sm text-slate-500">总强度分钟</div>
-                <div className="mt-2 text-2xl font-semibold">{selectedMetric.intensityMinutes ?? "--"}</div>
-              </article>
-              <article className="rounded-[1.75rem] border border-slate-200 bg-white p-5 shadow-[0_18px_50px_rgba(15,23,42,0.07)]">
-                <div className="text-sm text-slate-500">中等强度</div>
-                <div className="mt-2 text-2xl font-semibold">{selectedMetric.moderateIntensityMinutes ?? "--"}</div>
-              </article>
-              <article className="rounded-[1.75rem] border border-slate-200 bg-white p-5 shadow-[0_18px_50px_rgba(15,23,42,0.07)]">
-                <div className="text-sm text-slate-500">高强度</div>
-                <div className="mt-2 text-2xl font-semibold">{selectedMetric.vigorousIntensityMinutes ?? "--"}</div>
-              </article>
-              <article className="rounded-[1.75rem] border border-slate-200 bg-white p-5 shadow-[0_18px_50px_rgba(15,23,42,0.07)]">
-                <div className="text-sm text-slate-500">Body Battery High</div>
-                <div className="mt-2 text-2xl font-semibold">{selectedMetric.bodyBatteryHigh ?? "--"}</div>
-              </article>
+              <MetricTile detail="该日总步数" label="步数" value={`${selectedMetric.steps ?? "--"}`} />
+              <MetricTile detail="该日体重" label="体重" value={selectedMetric.weight != null ? `${selectedMetric.weight.toFixed(1)} kg` : "--"} />
+              <MetricTile detail="恢复 readiness 信号" label="训练准备度" value={`${selectedMetric.trainingReadiness ?? "--"}`} />
+              <MetricTile detail="该日总训练负荷" label="总强度分钟" value={`${selectedMetric.intensityMinutes ?? "--"}`} />
+              <MetricTile detail="中等强度分钟" label="中等强度" value={`${selectedMetric.moderateIntensityMinutes ?? "--"}`} />
+              <MetricTile detail="高强度分钟" label="高强度" value={`${selectedMetric.vigorousIntensityMinutes ?? "--"}`} />
+              <MetricTile detail="当日峰值电量" label="Body Battery High" value={`${selectedMetric.bodyBatteryHigh ?? "--"}`} />
             </div>
 
             <div className="grid gap-4 xl:grid-cols-3">
@@ -521,19 +495,19 @@ export function DataExplorer({ userEmail, metrics, activities, initialAnalysisRe
             </div>
           </>
         ) : (
-          <div className="rounded-[1.75rem] border border-dashed border-slate-300 bg-white/70 px-6 py-12 text-center text-sm text-slate-500">
+          <div className="rounded-[1.75rem] border border-dashed border-white/12 bg-white/[0.04] px-6 py-12 text-center text-sm text-slate-400">
             还没有可分析的每日数据。
           </div>
         )}
       </section>
 
       <section className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
-        <article className="rounded-[1.75rem] border border-slate-200 bg-white p-6 shadow-[0_18px_50px_rgba(15,23,42,0.07)]">
-          <h2 className="text-2xl font-semibold tracking-tight">活动摘要</h2>
-          <p className="mt-2 text-sm text-slate-500">先看活动列表确认训练记录是否到位，再决定是否补拉某些日期的活动详情。</p>
+        <SurfaceCard className="p-6">
+          <h2 className="text-2xl font-semibold tracking-tight text-white">活动摘要</h2>
+          <p className="mt-2 text-sm text-slate-400">先看活动列表确认训练记录是否到位，再决定是否补拉某些日期的活动详情。</p>
 
-          <div className="mt-6 overflow-hidden rounded-3xl border border-slate-200">
-            <div className="grid grid-cols-[1.4fr_0.8fr_0.8fr_1fr] bg-slate-50 px-5 py-3 text-xs uppercase tracking-[0.2em] text-slate-400">
+          <div className="mt-6 overflow-hidden rounded-3xl border border-white/10">
+            <div className="grid grid-cols-[1.4fr_0.8fr_0.8fr_1fr] bg-white/[0.04] px-5 py-3 text-xs uppercase tracking-[0.2em] text-slate-500">
               <span>活动</span>
               <span>距离</span>
               <span>时长</span>
@@ -541,10 +515,10 @@ export function DataExplorer({ userEmail, metrics, activities, initialAnalysisRe
             </div>
             {latestActivities.length > 0 ? (
               latestActivities.map((activity) => (
-                <div className="grid grid-cols-[1.4fr_0.8fr_0.8fr_1fr] border-t border-slate-100 px-5 py-4 text-sm text-slate-700" key={activity.id}>
+                <div className="grid grid-cols-[1.4fr_0.8fr_0.8fr_1fr] border-t border-white/8 px-5 py-4 text-sm text-slate-300" key={activity.id}>
                   <div>
-                    <div className="font-medium text-slate-900">{activity.name}</div>
-                    <div className="mt-1 text-xs uppercase tracking-[0.18em] text-slate-400">{activity.type.replaceAll("_", " ")}</div>
+                    <div className="font-medium text-white">{activity.name}</div>
+                    <div className="mt-1 text-xs uppercase tracking-[0.18em] text-slate-500">{activity.type.replaceAll("_", " ")}</div>
                   </div>
                   <span>{formatDistance(activity.distance)}</span>
                   <span>{formatDuration(activity.duration)}</span>
@@ -552,19 +526,19 @@ export function DataExplorer({ userEmail, metrics, activities, initialAnalysisRe
                 </div>
               ))
             ) : (
-              <div className="px-5 py-8 text-sm text-slate-500">还没有活动记录。</div>
+              <div className="px-5 py-8 text-sm text-slate-400">还没有活动记录。</div>
             )}
           </div>
-        </article>
+        </SurfaceCard>
 
-        <article className="rounded-[1.75rem] border border-slate-200 bg-white p-6 shadow-[0_18px_50px_rgba(15,23,42,0.07)]">
-          <h2 className="text-2xl font-semibold tracking-tight">原始数据与字段核对</h2>
-          <p className="mt-2 text-sm text-slate-500">把 Raw JSON 收到页面末尾，只在你需要校验字段或扩展解析规则时再展开。</p>
-          <details className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
-            <summary className="cursor-pointer list-none text-sm font-medium text-slate-700">
+        <SurfaceCard className="p-6">
+          <h2 className="text-2xl font-semibold tracking-tight text-white">原始数据与字段核对</h2>
+          <p className="mt-2 text-sm text-slate-400">把 Raw JSON 收到页面末尾，只在你需要校验字段或扩展解析规则时再展开。</p>
+          <details className="mt-4 rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+            <summary className="cursor-pointer list-none text-sm font-medium text-slate-200">
               查看 {selectedMetric?.date ?? "当前日期"} Raw JSON
             </summary>
-            <div className="mt-4 text-xs text-slate-500">
+            <div className="mt-4 text-xs text-slate-400">
               顶层字段数：{getTopLevelKeys(selectedMetric?.raw).length}
               {getTopLevelKeys(selectedMetric?.raw).length > 0
                 ? `（${getTopLevelKeys(selectedMetric?.raw)
@@ -572,11 +546,11 @@ export function DataExplorer({ userEmail, metrics, activities, initialAnalysisRe
                     .join(", ")}${getTopLevelKeys(selectedMetric?.raw).length > 16 ? ", ..." : ""}）`
                 : ""}
             </div>
-            <pre className="mt-4 max-h-[42rem] overflow-auto rounded-2xl bg-white p-4 text-xs text-slate-700">
+            <pre className="mt-4 max-h-[42rem] overflow-auto rounded-2xl bg-[#040b14] p-4 text-xs text-slate-300">
               {selectedMetric?.raw ? JSON.stringify(selectedMetric.raw, null, 2) : "暂无"}
             </pre>
           </details>
-        </article>
+        </SurfaceCard>
       </section>
     </>
   )

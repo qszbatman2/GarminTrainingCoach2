@@ -35,22 +35,22 @@ export function DataCalendar({ metricDates, activityDates }: DataCalendarProps) 
 
   return (
     <section className="space-y-6">
-      <div className="flex flex-col gap-4 rounded-[1.75rem] border border-slate-200 bg-white p-6 shadow-[0_18px_50px_rgba(15,23,42,0.07)] lg:flex-row lg:items-center lg:justify-between">
+      <div className="flex flex-col gap-4 rounded-[1.75rem] border border-white/10 bg-white/[0.04] p-6 shadow-[0_18px_50px_rgba(15,23,42,0.24)] backdrop-blur-xl lg:flex-row lg:items-center lg:justify-between">
         <div>
-          <h2 className="text-2xl font-semibold tracking-tight">数据日历</h2>
-          <p className="mt-2 text-sm text-slate-500">快速看清楚哪些天已经同步了 Daily 数据，哪些天有运动活动。</p>
+          <h2 className="text-2xl font-semibold tracking-tight text-white">数据日历</h2>
+          <p className="mt-2 text-sm text-slate-400">快速看清楚哪些天已经同步了 Daily 数据，哪些天有运动活动。</p>
         </div>
         <div className="flex items-center gap-3">
           <button
-            className="rounded-full border border-slate-200 px-4 py-2 text-sm text-slate-700 transition hover:bg-slate-50"
+            className="rounded-full border border-white/10 px-4 py-2 text-sm text-slate-200 transition hover:bg-white/[0.08]"
             onClick={() => setCurrentMonth((prev) => new Date(prev.getFullYear(), prev.getMonth() - 1, 1))}
             type="button"
           >
             上个月
           </button>
-          <div className="min-w-28 text-center text-sm font-medium text-slate-700">{monthLabel(currentMonth)}</div>
+          <div className="min-w-28 text-center text-sm font-medium text-slate-200">{monthLabel(currentMonth)}</div>
           <button
-            className="rounded-full border border-slate-200 px-4 py-2 text-sm text-slate-700 transition hover:bg-slate-50"
+            className="rounded-full border border-white/10 px-4 py-2 text-sm text-slate-200 transition hover:bg-white/[0.08]"
             onClick={() => setCurrentMonth((prev) => new Date(prev.getFullYear(), prev.getMonth() + 1, 1))}
             type="button"
           >
@@ -59,19 +59,19 @@ export function DataCalendar({ metricDates, activityDates }: DataCalendarProps) 
         </div>
       </div>
 
-      <div className="flex flex-wrap gap-3 text-sm text-slate-600">
-        <span className="inline-flex items-center gap-2 rounded-full bg-white px-4 py-2 shadow-sm">
+      <div className="flex flex-wrap gap-3 text-sm text-slate-300">
+        <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 shadow-sm">
           <span className="h-3 w-3 rounded-full bg-cyan-500" />
           已拉 Daily 数据
         </span>
-        <span className="inline-flex items-center gap-2 rounded-full bg-white px-4 py-2 shadow-sm">
+        <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 shadow-sm">
           <span className="h-3 w-3 rounded-full bg-emerald-500" />
           当天有运动活动
         </span>
       </div>
 
-      <div className="overflow-hidden rounded-[1.75rem] border border-slate-200 bg-white shadow-[0_18px_50px_rgba(15,23,42,0.07)]">
-        <div className="grid grid-cols-7 bg-slate-50 px-4 py-3 text-center text-xs uppercase tracking-[0.18em] text-slate-400">
+      <div className="overflow-hidden rounded-[1.75rem] border border-white/10 bg-white/[0.04] shadow-[0_18px_50px_rgba(15,23,42,0.24)] backdrop-blur-xl">
+        <div className="grid grid-cols-7 bg-white/[0.04] px-4 py-3 text-center text-xs uppercase tracking-[0.18em] text-slate-500">
           {["周一", "周二", "周三", "周四", "周五", "周六", "周日"].map((label) => (
             <span key={label}>{label}</span>
           ))}
@@ -85,14 +85,14 @@ export function DataCalendar({ metricDates, activityDates }: DataCalendarProps) 
 
             return (
               <div
-                className={`min-h-28 border-t border-slate-100 p-3 ${isCurrentMonth ? "bg-white" : "bg-slate-50/70 text-slate-400"}`}
+                className={`min-h-28 border-t border-white/8 p-3 ${isCurrentMonth ? "bg-transparent text-slate-200" : "bg-black/10 text-slate-500"}`}
                 key={dateKey}
               >
                 <div className="text-sm font-medium">{day.getDate()}</div>
                 <div className="mt-3 space-y-2">
-                  {hasMetric ? <div className="rounded-2xl bg-cyan-50 px-3 py-2 text-xs text-cyan-700">已拉 Daily</div> : null}
-                  {hasActivity ? <div className="rounded-2xl bg-emerald-50 px-3 py-2 text-xs text-emerald-700">有活动</div> : null}
-                  {!hasMetric && !hasActivity ? <div className="px-1 text-xs text-slate-400">暂无数据</div> : null}
+                  {hasMetric ? <div className="rounded-2xl border border-cyan-400/20 bg-cyan-400/10 px-3 py-2 text-xs text-cyan-200">已拉 Daily</div> : null}
+                  {hasActivity ? <div className="rounded-2xl border border-emerald-400/20 bg-emerald-400/10 px-3 py-2 text-xs text-emerald-200">有活动</div> : null}
+                  {!hasMetric && !hasActivity ? <div className="px-1 text-xs text-slate-500">暂无数据</div> : null}
                 </div>
               </div>
             )

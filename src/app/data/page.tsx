@@ -4,6 +4,7 @@ import { auth } from "@/auth"
 import { getOrCreateLatestAnalysisReport } from "@/lib/analysis-report"
 import { AuthPanel } from "@/components/auth-panel"
 import { DataExplorer } from "@/components/data-explorer"
+import { AppPage, PageHero } from "@/components/design-system"
 import prisma from "@/lib/prisma"
 
 export default async function DataPage() {
@@ -58,35 +59,22 @@ export default async function DataPage() {
   }
 
   return (
-    <main className="min-h-screen bg-[linear-gradient(180deg,#08101d_0%,#0d1526_28%,#edf2f8_28%,#f4f7fb_100%)] px-6 py-8 text-slate-950">
-      <div className="mx-auto max-w-7xl space-y-8">
-        <section className="overflow-hidden rounded-[2rem] bg-[radial-gradient(circle_at_top_left,_rgba(95,230,255,0.22),_transparent_30%),linear-gradient(135deg,#0f1a2e,#0b1018)] p-8 text-white shadow-[0_20px_80px_rgba(8,16,29,0.35)]">
-          <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
-            <div>
-              <p className="text-xs uppercase tracking-[0.35em] text-cyan-200/80">Data Explorer</p>
-              <h1 className="mt-4 text-4xl font-semibold tracking-tight md:text-5xl">已同步数据总览</h1>
-              <p className="mt-4 max-w-3xl text-sm leading-7 text-slate-300">
-                这里专门负责数据呈现和分析，集中查看 AI 结论、关键趋势、单日深度分析和原始字段核对。
-              </p>
-            </div>
-
-            <div className="flex flex-wrap gap-3">
-              <Link
-                className="rounded-full border border-white/15 px-5 py-3 text-sm text-slate-100 transition hover:bg-white/10"
-                href="/data/sync"
-              >
-                查看同步状态
-              </Link>
-              <Link
-                className="rounded-full border border-white/15 px-5 py-3 text-sm text-slate-100 transition hover:bg-white/10"
-                href="/"
-              >
-                返回首页
-              </Link>
-            </div>
-          </div>
-        </section>
-
+    <AppPage>
+      <PageHero
+        actions={
+          <>
+            <Link className="rounded-full border border-white/12 bg-white/[0.04] px-5 py-3 text-sm text-slate-100 transition hover:bg-white/[0.08]" href="/data/sync">
+              查看同步状态
+            </Link>
+            <Link className="rounded-full border border-cyan-400/25 bg-cyan-400/10 px-5 py-3 text-sm text-cyan-100 transition hover:bg-cyan-400/15" href="/">
+              返回首页
+            </Link>
+          </>
+        }
+        description="这里专门负责数据呈现和分析，集中查看 AI 结论、关键趋势、单日深度分析和原始字段核对。"
+        eyebrow="Data Analysis"
+        title="已同步数据分析"
+      />
         <DataExplorer
           activities={user.activities.map((activity) => ({
             id: activity.id,
@@ -110,7 +98,6 @@ export default async function DataPage() {
           userEmail={user.email}
           initialAnalysisReport={initialAnalysisReport}
         />
-      </div>
-    </main>
+    </AppPage>
   )
 }

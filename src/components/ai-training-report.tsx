@@ -2,6 +2,7 @@
 
 import { useState } from "react"
 
+import { AccentPill, MetricTile, SubtleCard, SurfaceCard } from "@/components/design-system"
 import type { TrainingAnalysisPayload, TrainingAnalysisResult } from "@/lib/training-analysis"
 
 type ApiResult = {
@@ -13,15 +14,15 @@ function statusTone(value: TrainingAnalysisResult["riskLevel"] | TrainingAnalysi
     case "good":
     case "balanced":
     case "low":
-      return "bg-emerald-50 text-emerald-700"
+      return "emerald"
     case "moderate":
     case "medium":
-      return "bg-amber-50 text-amber-700"
+      return "amber"
     case "poor":
     case "high":
-      return "bg-rose-50 text-rose-700"
+      return "rose"
     default:
-      return "bg-slate-100 text-slate-700"
+      return "neutral"
   }
 }
 
@@ -31,11 +32,11 @@ function LabelList({ title, items }: { title: string; items: string[] }) {
   }
 
   return (
-    <div className="rounded-[1.5rem] border border-slate-200 bg-slate-50/80 p-5">
-      <div className="text-sm font-semibold text-slate-900">{title}</div>
+    <div className="rounded-[1.5rem] border border-white/10 bg-white/[0.04] p-5">
+      <div className="text-sm font-semibold text-white">{title}</div>
       <div className="mt-3 flex flex-wrap gap-2">
         {items.map((item) => (
-          <span className="rounded-full bg-white px-3 py-1.5 text-sm text-slate-600" key={item}>
+          <span className="rounded-full border border-white/10 bg-white/[0.05] px-3 py-1.5 text-sm text-slate-200" key={item}>
             {item}
           </span>
         ))}
@@ -50,11 +51,11 @@ function TextList({ title, items }: { title: string; items: string[] }) {
   }
 
   return (
-    <div className="rounded-[1.5rem] border border-slate-200 bg-white p-5">
-      <div className="text-sm font-semibold text-slate-900">{title}</div>
+    <div className="rounded-[1.5rem] border border-white/10 bg-white/[0.04] p-5">
+      <div className="text-sm font-semibold text-white">{title}</div>
       <div className="mt-3 space-y-2">
         {items.map((item) => (
-          <p className="rounded-2xl bg-slate-50 px-4 py-3 text-sm leading-6 text-slate-600" key={item}>
+          <p className="rounded-2xl bg-white/[0.05] px-4 py-3 text-sm leading-6 text-slate-300" key={item}>
             {item}
           </p>
         ))}
@@ -103,12 +104,12 @@ export function AITrainingReport({ initialReport }: { initialReport: TrainingAna
   }
 
   return (
-    <section className="rounded-[2rem] border border-slate-200 bg-white p-7 shadow-[0_18px_50px_rgba(15,23,42,0.07)]">
+    <SurfaceCard className="p-7">
       <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
         <div>
-          <div className="text-xs uppercase tracking-[0.25em] text-violet-600">AI Training Analysis</div>
-          <h2 className="mt-3 text-3xl font-semibold tracking-tight text-slate-950">基于 Garmin 全量数据生成训练建议</h2>
-          <p className="mt-3 max-w-3xl text-sm leading-7 text-slate-500">
+          <div className="text-xs uppercase tracking-[0.25em] text-violet-300/80">AI Training Analysis</div>
+          <h2 className="mt-3 text-3xl font-semibold tracking-tight text-white">基于 Garmin 全量数据生成训练建议</h2>
+          <p className="mt-3 max-w-3xl text-sm leading-7 text-slate-300">
             页面会优先展示已保存报告；只有检测到数据变化或你手动刷新时，才会重新调用火山引擎生成新建议。
           </p>
         </div>
@@ -122,46 +123,46 @@ export function AITrainingReport({ initialReport }: { initialReport: TrainingAna
         </button>
       </div>
 
-      {error ? <div className="mt-5 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div> : null}
+      {error ? <div className="mt-5 rounded-2xl border border-rose-400/25 bg-rose-400/10 px-4 py-3 text-sm text-rose-200">{error}</div> : null}
 
-      <div className="mt-4 text-sm text-slate-500">最近更新时间：{formatTime(result?.updatedAt)}</div>
+      <div className="mt-4 text-sm text-slate-400">最近更新时间：{formatTime(result?.updatedAt)}</div>
 
       {result ? (
         <div className="mt-6 space-y-5">
           <div className="grid gap-4 md:grid-cols-4">
-            <div className="rounded-[1.5rem] border border-slate-200 bg-slate-50/80 p-5">
-              <div className="text-sm text-slate-500">恢复状态</div>
-              <div className={`mt-3 inline-flex rounded-full px-3 py-1 text-sm font-medium ${statusTone(result.analysis.recoveryStatus)}`}>
-                {result.analysis.recoveryStatus}
+            <SubtleCard>
+              <div className="text-sm text-slate-400">恢复状态</div>
+              <div className="mt-3">
+                <AccentPill tone={statusTone(result.analysis.recoveryStatus)}>{result.analysis.recoveryStatus}</AccentPill>
               </div>
-            </div>
-            <div className="rounded-[1.5rem] border border-slate-200 bg-slate-50/80 p-5">
-              <div className="text-sm text-slate-500">负荷状态</div>
-              <div className={`mt-3 inline-flex rounded-full px-3 py-1 text-sm font-medium ${statusTone(result.analysis.loadStatus)}`}>
-                {result.analysis.loadStatus}
+            </SubtleCard>
+            <SubtleCard>
+              <div className="text-sm text-slate-400">负荷状态</div>
+              <div className="mt-3">
+                <AccentPill tone={statusTone(result.analysis.loadStatus)}>{result.analysis.loadStatus}</AccentPill>
               </div>
-            </div>
-            <div className="rounded-[1.5rem] border border-slate-200 bg-slate-50/80 p-5">
-              <div className="text-sm text-slate-500">风险等级</div>
-              <div className={`mt-3 inline-flex rounded-full px-3 py-1 text-sm font-medium ${statusTone(result.analysis.riskLevel)}`}>
-                {result.analysis.riskLevel}
+            </SubtleCard>
+            <SubtleCard>
+              <div className="text-sm text-slate-400">风险等级</div>
+              <div className="mt-3">
+                <AccentPill tone={statusTone(result.analysis.riskLevel)}>{result.analysis.riskLevel}</AccentPill>
               </div>
-            </div>
-            <div className="rounded-[1.5rem] border border-slate-200 bg-slate-50/80 p-5">
-              <div className="text-sm text-slate-500">分析窗口</div>
-              <div className="mt-3 text-lg font-semibold text-slate-900">
+            </SubtleCard>
+            <SubtleCard>
+              <div className="text-sm text-slate-400">分析窗口</div>
+              <div className="mt-3 text-lg font-semibold text-white">
                 {result.context.dateRange.metricStart ?? "--"} 至 {result.context.dateRange.metricEnd ?? "--"}
               </div>
-              <div className="mt-2 text-sm text-slate-500">
+              <div className="mt-2 text-sm text-slate-400">
                 {result.context.athleteProfile.totalMetricDays} 天指标，{result.context.athleteProfile.totalActivities} 条活动
               </div>
-            </div>
+            </SubtleCard>
           </div>
 
-          <article className="rounded-[1.5rem] border border-slate-200 bg-slate-50/70 p-6">
-            <div className="text-sm font-semibold text-slate-900">AI 总结</div>
-            <p className="mt-3 text-sm leading-7 text-slate-600">{result.analysis.summary}</p>
-          </article>
+          <SubtleCard className="border-violet-400/15 bg-[linear-gradient(135deg,rgba(139,92,246,0.14),rgba(15,23,42,0.3))] p-6">
+            <div className="text-sm font-semibold text-white">AI 总结</div>
+            <p className="mt-3 text-sm leading-7 text-slate-200">{result.analysis.summary}</p>
+          </SubtleCard>
 
           <div className="grid gap-4 xl:grid-cols-2">
             <TextList items={result.analysis.keyFindings} title="关键发现" />
@@ -176,25 +177,13 @@ export function AITrainingReport({ initialReport }: { initialReport: TrainingAna
           </div>
 
           <div className="grid gap-4 md:grid-cols-4">
-            <div className="rounded-3xl bg-slate-50 px-4 py-4">
-              <div className="text-xs uppercase tracking-[0.2em] text-slate-400">最近 7 天睡眠均值</div>
-              <div className="mt-2 text-lg font-semibold">{result.context.recovery.sleepScore7dAvg ?? "--"}</div>
-            </div>
-            <div className="rounded-3xl bg-slate-50 px-4 py-4">
-              <div className="text-xs uppercase tracking-[0.2em] text-slate-400">最近 7 天 HRV 均值</div>
-              <div className="mt-2 text-lg font-semibold">{result.context.recovery.hrv7dAvg ?? "--"}</div>
-            </div>
-            <div className="rounded-3xl bg-slate-50 px-4 py-4">
-              <div className="text-xs uppercase tracking-[0.2em] text-slate-400">最近 7 天训练时长</div>
-              <div className="mt-2 text-lg font-semibold">{result.context.load.duration7dMin} min</div>
-            </div>
-            <div className="rounded-3xl bg-slate-50 px-4 py-4">
-              <div className="text-xs uppercase tracking-[0.2em] text-slate-400">急慢比</div>
-              <div className="mt-2 text-lg font-semibold">{result.context.load.acuteChronicRatio ?? "--"}</div>
-            </div>
+            <MetricTile detail="恢复质量观察窗" label="最近 7 天睡眠均值" value={`${result.context.recovery.sleepScore7dAvg ?? "--"}`} />
+            <MetricTile detail="自主神经恢复信号" label="最近 7 天 HRV 均值" value={`${result.context.recovery.hrv7dAvg ?? "--"}`} />
+            <MetricTile detail="训练负荷窗口" label="最近 7 天训练时长" value={`${result.context.load.duration7dMin} min`} />
+            <MetricTile detail="近期训练风险指标" label="急慢比" value={`${result.context.load.acuteChronicRatio ?? "--"}`} />
           </div>
         </div>
       ) : null}
-    </section>
+    </SurfaceCard>
   )
 }

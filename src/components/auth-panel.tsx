@@ -4,6 +4,8 @@ import { useState } from "react"
 import { signIn } from "next-auth/react"
 import { useRouter } from "next/navigation"
 
+import { AppPage, SubtleCard, SurfaceCard } from "@/components/design-system"
+
 type Mode = "login" | "register"
 
 export function AuthPanel() {
@@ -54,9 +56,9 @@ export function AuthPanel() {
   }
 
   return (
-    <main className="min-h-screen bg-[radial-gradient(circle_at_top,_#25314f,_#09111f_58%,_#04070d)] px-6 py-12 text-white">
+    <AppPage>
       <div className="mx-auto grid max-w-6xl gap-10 lg:grid-cols-[1.15fr_0.85fr]">
-        <section className="rounded-[2rem] border border-white/10 bg-white/6 p-8 shadow-[0_20px_80px_rgba(0,0,0,0.45)] backdrop-blur">
+        <SurfaceCard className="p-8">
           <p className="text-xs uppercase tracking-[0.35em] text-cyan-300/80">Garmin Training Coach</p>
           <h1 className="mt-5 max-w-3xl text-4xl font-semibold tracking-tight text-white md:text-6xl">
             把 Garmin 身体数据和训练记录，整理成你每天真会看的私人仪表盘。
@@ -66,25 +68,25 @@ export function AuthPanel() {
           </p>
 
           <div className="mt-10 grid gap-4 md:grid-cols-3">
-            <div className="rounded-3xl border border-cyan-400/20 bg-cyan-400/8 p-5">
+            <SubtleCard className="border-cyan-400/20 bg-cyan-400/8">
               <div className="text-sm text-cyan-200">全量存档</div>
               <div className="mt-2 text-2xl font-semibold">Raw JSON</div>
               <div className="mt-2 text-sm text-slate-300">保留原始 Garmin 指标，后续可扩展 AI 和趋势分析。</div>
-            </div>
-            <div className="rounded-3xl border border-white/10 bg-white/5 p-5">
+            </SubtleCard>
+            <SubtleCard>
               <div className="text-sm text-slate-300">跨端访问</div>
               <div className="mt-2 text-2xl font-semibold">Web / PWA</div>
               <div className="mt-2 text-sm text-slate-300">现在先把核心产品闭环做好，再接自动同步和安装体验。</div>
-            </div>
-            <div className="rounded-3xl border border-white/10 bg-white/5 p-5">
+            </SubtleCard>
+            <SubtleCard>
               <div className="text-sm text-slate-300">接下来</div>
               <div className="mt-2 text-2xl font-semibold">AI Coach</div>
               <div className="mt-2 text-sm text-slate-300">等登录、绑定、展示稳定后，再接入大模型输出训练建议。</div>
-            </div>
+            </SubtleCard>
           </div>
-        </section>
+        </SurfaceCard>
 
-        <section className="rounded-[2rem] border border-white/10 bg-slate-950/70 p-8 shadow-[0_20px_80px_rgba(0,0,0,0.45)]">
+        <SurfaceCard className="bg-[#07101b]/88 p-8">
           <div className="inline-flex rounded-full border border-white/10 bg-white/5 p-1 text-sm">
             <button
               className={`rounded-full px-4 py-2 transition ${mode === "login" ? "bg-white text-slate-950" : "text-slate-300"}`}
@@ -153,8 +155,8 @@ export function AuthPanel() {
           <p className="mt-6 text-sm leading-6 text-slate-400">
             当前版本先使用邮箱密码登录。后续如果需要，再补邮箱验证码或第三方 OAuth。
           </p>
-        </section>
+        </SurfaceCard>
       </div>
-    </main>
+    </AppPage>
   )
 }
