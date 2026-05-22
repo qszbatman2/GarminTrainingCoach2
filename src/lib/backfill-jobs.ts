@@ -70,6 +70,7 @@ export async function createBackfillJob(userId: string, days = 30) {
       status: true,
       totalDates: true,
       currentIndex: true,
+      targetDates: true,
       syncedDates: true,
       skippedDates: true,
       failedDates: true,
@@ -94,6 +95,7 @@ export async function getBackfillJob(jobId: string, userId?: string) {
       status: true,
       totalDates: true,
       currentIndex: true,
+      targetDates: true,
       syncedDates: true,
       skippedDates: true,
       failedDates: true,
@@ -117,6 +119,7 @@ export async function getLatestBackfillJob(userId: string) {
       status: true,
       totalDates: true,
       currentIndex: true,
+      targetDates: true,
       syncedDates: true,
       skippedDates: true,
       failedDates: true,
@@ -200,7 +203,7 @@ export async function processBackfillJob(jobId: string) {
       status: "running",
       startedAt: job.startedAt ?? new Date(),
       heartbeatAt: new Date(),
-      message: "服务端正在执行补拉任务",
+      message: `服务端正在执行补拉任务，准备检查 ${targetDates[job.currentIndex] ?? "当前日期"}`,
       lastError: null,
     },
   })
@@ -211,6 +214,13 @@ export async function processBackfillJob(jobId: string) {
   for (let index = job.currentIndex; index < endIndex; index += 1) {
     const date = targetDates[index]
     try {
+      await prisma.backfillJob.update({
+        where: { id: jobId },
+        data: {
+          heartbeatAt: new Date(),
+          message: `正在检查 ${date}（${index + 1}/${targetDates.length}）：抓取远端并比对缺口`,
+        },
+      })
       const result = await syncGarminDateForUser({
         userId: job.user.id,
         garminEmail: job.user.garminEmail,
@@ -222,6 +232,15 @@ export async function processBackfillJob(jobId: string) {
       } else {
         skippedDates.push(date)
       }
+      await prisma.backfillJob.update({
+        where: { id: jobId },
+        data: {
+          heartbeatAt: new Date(),
+          message: result.dataChanged
+            ? `${date} 已补齐缺口，继续检查下一天`
+            : `${date} 无新增差异，已跳过`,
+        },
+      })
     } catch (error: unknown) {
       failedDates.push(date)
       await prisma.backfillJob.update({
@@ -229,6 +248,7 @@ export async function processBackfillJob(jobId: string) {
         data: {
           lastError: error instanceof Error ? error.message : "补拉失败",
           heartbeatAt: new Date(),
+          message: `${date} 检查失败，继续后续日期`,
         },
       })
     }

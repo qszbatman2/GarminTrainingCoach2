@@ -49,6 +49,7 @@ type BackfillJobSnapshot = {
   status: string
   totalDates: number
   currentIndex: number
+  targetDates?: unknown
   syncedDates: unknown
   skippedDates: unknown
   failedDates: unknown
@@ -226,6 +227,43 @@ function jsonArrayCount(value: unknown) {
   return Array.isArray(value) ? value.length : 0
 }
 
+function asStringArray(value: unknown) {
+  return Array.isArray(value) ? value.map((item) => String(item)) : []
+}
+
+function formatDateTime(value?: string | null) {
+  if (!value) {
+    return "--"
+  }
+
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) {
+    return value
+  }
+
+  return date.toLocaleString("zh-CN", {
+    hour12: false,
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  })
+}
+
+function getHeartbeatStatus(job: BackfillJobSnapshot | null) {
+  if (!job || !job.heartbeatAt || !["pending", "running"].includes(job.status)) {
+    return null
+  }
+
+  const diffMs = Date.now() - new Date(job.heartbeatAt).getTime()
+  if (diffMs <= 90_000) {
+    return { label: "仍在运行", tone: "bg-emerald-50 text-emerald-600" }
+  }
+
+  return { label: "长时间无心跳", tone: "bg-amber-50 text-amber-700" }
+}
+
 function getActivityDays(activities: ActivityItem[]) {
   return new Set(activities.map((activity) => activity.date)).size
 }
@@ -317,6 +355,18 @@ export function DataExplorer({ userEmail, metrics, activities, initialBackfillJo
   const heartRateSeries = selectedMetric ? getHeartRateSeries(selectedMetric.raw) : []
   const stressSeries = selectedMetric ? getStressSeries(selectedMetric.raw) : []
   const bodyBatterySeries = selectedMetric ? getBodyBatterySeries(selectedMetric.raw) : []
+  const backfillTargetDates = useMemo(() => asStringArray(backfillJob?.targetDates), [backfillJob?.targetDates])
+  const backfillSyncedDates = useMemo(() => asStringArray(backfillJob?.syncedDates), [backfillJob?.syncedDates])
+  const backfillSkippedDates = useMemo(() => asStringArray(backfillJob?.skippedDates), [backfillJob?.skippedDates])
+  const backfillFailedDates = useMemo(() => asStringArray(backfillJob?.failedDates), [backfillJob?.failedDates])
+  const currentBackfillDate = useMemo(() => {
+    if (!backfillJob || !["pending", "running"].includes(backfillJob.status)) {
+      return null
+    }
+
+    return backfillTargetDates[backfillJob.currentIndex] ?? null
+  }, [backfillJob, backfillTargetDates])
+  const heartbeatStatus = useMemo(() => getHeartbeatStatus(backfillJob), [backfillJob])
   const overviewCards = useMemo<InsightCard[]>(
     () => [
       {
@@ -574,11 +624,11 @@ export function DataExplorer({ userEmail, metrics, activities, initialBackfillJo
             </div>
             <div className="rounded-3xl bg-slate-50 px-4 py-4">
               <div className="text-xs uppercase tracking-[0.2em] text-slate-400">已补成功</div>
-              <div className="mt-2 text-lg font-semibold">{jsonArrayCount(backfillJob.syncedDates)}</div>
+              <div className="mt-2 text-lg font-semibold">{backfillSyncedDates.length}</div>
             </div>
             <div className="rounded-3xl bg-slate-50 px-4 py-4">
               <div className="text-xs uppercase tracking-[0.2em] text-slate-400">失败日期</div>
-              <div className="mt-2 text-lg font-semibold">{jsonArrayCount(backfillJob.failedDates)}</div>
+              <div className="mt-2 text-lg font-semibold">{backfillFailedDates.length}</div>
             </div>
             <div className="rounded-3xl bg-slate-50 px-4 py-4">
               <div className="text-xs uppercase tracking-[0.2em] text-slate-400">最近 7 天强度均值</div>
@@ -588,6 +638,95 @@ export function DataExplorer({ userEmail, metrics, activities, initialBackfillJo
         ) : null}
         {backfillJob?.message ? <div className="mt-4 text-sm text-slate-500">{backfillJob.message}</div> : null}
         {backfillJob?.lastError ? <div className="mt-2 text-sm text-rose-600">最近错误：{backfillJob.lastError}</div> : null}
+
+        {backfillJob ? (
+          <div className="mt-6 grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
+            <article className="rounded-[1.5rem] border border-slate-200 bg-slate-50/60 p-5">
+              <div className="flex items-center justify-between gap-3">
+                <h3 className="text-lg font-semibold text-slate-900">任务运行日志</h3>
+                {heartbeatStatus ? <span className={`rounded-full px-3 py-1 text-xs font-medium ${heartbeatStatus.tone}`}>{heartbeatStatus.label}</span> : null}
+              </div>
+              <div className="mt-4 space-y-3 text-sm text-slate-600">
+                <div>
+                  当前检查日期：
+                  <span className="ml-2 font-medium text-slate-900">{currentBackfillDate ?? "--"}</span>
+                </div>
+                <div>
+                  当前步骤：
+                  <span className="ml-2 font-medium text-slate-900">{backfillJob.message ?? "--"}</span>
+                </div>
+                <div>
+                  开始时间：
+                  <span className="ml-2 font-medium text-slate-900">{formatDateTime(backfillJob.startedAt)}</span>
+                </div>
+                <div>
+                  最后心跳：
+                  <span className="ml-2 font-medium text-slate-900">{formatDateTime(backfillJob.heartbeatAt)}</span>
+                </div>
+                <div>
+                  最近更新：
+                  <span className="ml-2 font-medium text-slate-900">{formatDateTime(backfillJob.updatedAt)}</span>
+                </div>
+              </div>
+
+              <div className="mt-5 space-y-2">
+                {[
+                  "创建任务",
+                  "抓取远端日期数据",
+                  "比对本地已有字段",
+                  "补齐新增或更完整的字段",
+                  "写回结果并推进到下一天",
+                ].map((step, index) => {
+                  const activeIndex =
+                    backfillJob.status === "pending"
+                      ? 0
+                      : backfillJob.status === "running"
+                        ? 2
+                        : 4
+
+                  return (
+                    <div className="flex items-center gap-3 text-sm" key={step}>
+                      <span
+                        className={`inline-flex h-6 w-6 items-center justify-center rounded-full text-xs ${
+                          index <= activeIndex ? "bg-slate-900 text-white" : "bg-slate-200 text-slate-500"
+                        }`}
+                      >
+                        {index + 1}
+                      </span>
+                      <span className={index <= activeIndex ? "text-slate-900" : "text-slate-500"}>{step}</span>
+                    </div>
+                  )
+                })}
+              </div>
+            </article>
+
+            <article className="rounded-[1.5rem] border border-slate-200 bg-slate-50/60 p-5">
+              <h3 className="text-lg font-semibold text-slate-900">逐日结果</h3>
+              <p className="mt-2 text-sm text-slate-500">按检查结果拆成三类，方便判断为什么体重还没出来。</p>
+
+              <div className="mt-4 grid gap-4 md:grid-cols-3">
+                <div className="rounded-2xl bg-white p-4">
+                  <div className="text-xs uppercase tracking-[0.2em] text-emerald-500">已补齐</div>
+                  <div className="mt-3 max-h-44 space-y-2 overflow-auto text-sm text-slate-700">
+                    {backfillSyncedDates.length > 0 ? backfillSyncedDates.map((date) => <div key={date}>{date}</div>) : <div className="text-slate-400">暂无</div>}
+                  </div>
+                </div>
+                <div className="rounded-2xl bg-white p-4">
+                  <div className="text-xs uppercase tracking-[0.2em] text-slate-500">无差异已跳过</div>
+                  <div className="mt-3 max-h-44 space-y-2 overflow-auto text-sm text-slate-700">
+                    {backfillSkippedDates.length > 0 ? backfillSkippedDates.map((date) => <div key={date}>{date}</div>) : <div className="text-slate-400">暂无</div>}
+                  </div>
+                </div>
+                <div className="rounded-2xl bg-white p-4">
+                  <div className="text-xs uppercase tracking-[0.2em] text-rose-500">失败</div>
+                  <div className="mt-3 max-h-44 space-y-2 overflow-auto text-sm text-slate-700">
+                    {backfillFailedDates.length > 0 ? backfillFailedDates.map((date) => <div key={date}>{date}</div>) : <div className="text-slate-400">暂无</div>}
+                  </div>
+                </div>
+              </div>
+            </article>
+          </div>
+        ) : null}
       </section>
 
       <AITrainingReport initialReport={initialAnalysisReport} />
