@@ -58,6 +58,15 @@ function firstNumber(paths: string[], source: unknown): number | null {
   return null
 }
 
+function normalizeWeightKg(value: number | null) {
+  if (value == null || !Number.isFinite(value)) {
+    return null
+  }
+
+  // Garmin body composition often returns grams; normalize to kilograms for display.
+  return value > 500 ? value / 1000 : value
+}
+
 export function getRawNumber(paths: string[], source: unknown) {
   return firstNumber(paths, source)
 }
@@ -208,14 +217,16 @@ function normalizeSeries(source: unknown, valueKeys: string[]): NumericPoint[] {
 
 export function getMetricDisplayValues(raw: unknown) {
   return {
-    weight: firstNumber(
-      [
-        "body_composition.dateWeightList.0.weight",
-        "body_composition.totalAverage.weight",
-        "body_composition.allMetrics.weight",
-        "body_composition.weight",
-      ],
-      raw
+    weight: normalizeWeightKg(
+      firstNumber(
+        [
+          "body_composition.dateWeightList.0.weight",
+          "body_composition.totalAverage.weight",
+          "body_composition.allMetrics.weight",
+          "body_composition.weight",
+        ],
+        raw
+      )
     ),
     steps: firstNumber(["daily_steps.totalSteps", "steps.totalSteps", "stats.totalSteps"], raw),
     trainingReadiness: firstNumber(
