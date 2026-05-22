@@ -57,15 +57,6 @@ export default async function Home() {
 
   return (
     <DashboardShell
-      activities={user.activities.map((activity) => ({
-        id: activity.id,
-        name: activity.name,
-        type: activity.type,
-        distance: activity.distance,
-        duration: activity.duration,
-        date: activity.date.toISOString().slice(0, 10),
-        raw: activity.raw,
-      }))}
       garminEmail={user.garminEmail ?? ""}
       initialAnalysisReport={initialAnalysisReport}
       metrics={user.metrics.map((metric) => ({
