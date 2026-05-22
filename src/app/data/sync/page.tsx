@@ -5,6 +5,7 @@ import { AuthPanel } from "@/components/auth-panel"
 import { DataSyncCenter } from "@/components/data-sync-center"
 import { AppPage, PageHero } from "@/components/design-system"
 import prisma from "@/lib/prisma"
+import { getObservedSupportedFieldIds } from "@/lib/sync-supported-fields"
 
 export default async function DataSyncPage() {
   const session = await auth()
@@ -18,21 +19,15 @@ export default async function DataSyncPage() {
     select: {
       email: true,
       garminEmail: true,
-      metrics: {
-        select: {
-          date: true,
-        },
-        orderBy: { date: "desc" },
-      },
-      activities: {
-        select: {
-          date: true,
-        },
-        orderBy: { date: "desc" },
-      },
       backfillJobs: {
         orderBy: { createdAt: "desc" },
         take: 1,
+      },
+      _count: {
+        select: {
+          metrics: true,
+          activities: true,
+        },
       },
     },
   })
@@ -41,11 +36,43 @@ export default async function DataSyncPage() {
     return <AuthPanel />
   }
 
-  const metricDates = user.metrics.map((item) => item.date.toISOString().slice(0, 10))
+  const recentMetrics = await prisma.dailyMetric.findMany({
+    where: { userId: session.user.id },
+    orderBy: { date: "desc" },
+    take: 30,
+    select: {
+      date: true,
+      raw: true,
+    },
+  })
+  const metricDates = recentMetrics.map((item) => item.date.toISOString().slice(0, 10))
   const last30MetricDates = new Set(metricDates.slice(0, 30))
+  const earliestTrackedDate = metricDates[metricDates.length - 1] ?? null
+  const recentActivities = await prisma.activity.findMany({
+    where: {
+      userId: session.user.id,
+      ...(earliestTrackedDate
+        ? {
+            date: {
+              gte: new Date(`${earliestTrackedDate}T00:00:00.000Z`),
+            },
+          }
+        : {}),
+    },
+    orderBy: { date: "desc" },
+    take: 200,
+    select: {
+      date: true,
+      raw: true,
+    },
+  })
   const last30ActivityDays = new Set(
-    user.activities.map((item) => item.date.toISOString().slice(0, 10)).filter((date) => last30MetricDates.has(date))
+    recentActivities.map((item) => item.date.toISOString().slice(0, 10)).filter((date) => last30MetricDates.has(date))
   ).size
+  const observedSupportedFieldIds = getObservedSupportedFieldIds(
+    recentMetrics.map((item) => item.raw),
+    recentActivities.map((item) => item.raw)
+  )
 
   return (
     <AppPage>
@@ -65,7 +92,8 @@ export default async function DataSyncPage() {
         title="同步状态与补拉任务"
       />
         <DataSyncCenter
-          activitiesCount={user.activities.length}
+          activitiesCount={user._count.activities}
+          activeSupportedFieldIds={observedSupportedFieldIds}
           garminEmail={user.garminEmail}
           initialBackfillJob={
             user.backfillJobs[0]
@@ -91,7 +119,7 @@ export default async function DataSyncPage() {
           last30ActivityDays={last30ActivityDays}
           last30MetricCount={Math.min(metricDates.length, 30)}
           latestMetricDate={metricDates[0] ?? null}
-          metricsCount={user.metrics.length}
+          metricsCount={user._count.metrics}
           userEmail={user.email}
         />
     </AppPage>

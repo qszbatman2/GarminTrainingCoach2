@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation"
 import { useEffect, useMemo, useState } from "react"
 
 import { AccentPill, MetricTile, SubtleCard, SurfaceCard } from "@/components/design-system"
+import { SUPPORTED_FIELD_GROUPS } from "@/lib/sync-supported-fields"
 
 type BackfillJobSnapshot = {
   id: string
@@ -33,30 +34,8 @@ type DataSyncCenterProps = {
   last30MetricCount: number
   last30ActivityDays: number
   initialBackfillJob: BackfillJobSnapshot | null
+  activeSupportedFieldIds: string[]
 }
-
-const SUPPORTED_FIELD_GROUPS = [
-  {
-    title: "恢复与睡眠",
-    fields: ["睡眠评分", "睡眠时长", "深睡", "REM", "睡眠中断", "清醒时长", "HRV", "训练准备度"],
-  },
-  {
-    title: "心率与能量",
-    fields: ["静息心率", "心率分时", "压力", "Body Battery 高点", "Body Battery 低点", "Body Battery 分时", "呼吸频率", "血氧"],
-  },
-  {
-    title: "活动与代谢",
-    fields: ["步数", "活动消耗", "静息消耗", "久坐时长", "强度分钟", "中高强度分钟", "爬楼层数", "体重"],
-  },
-  {
-    title: "训练负荷与能力",
-    fields: ["7 天急性负荷", "长期慢性负荷", "急慢性负荷比", "低有氧负荷", "高有氧负荷", "无氧负荷", "建议恢复时长", "VO2 Max", "乳酸阈值心率", "耐力分数", "爬坡分数", "跑步耐受"],
-  },
-  {
-    title: "活动明细",
-    fields: ["活动概要", "活动详情", "Splits", "Split Summaries", "心率分区", "距离", "时长"],
-  },
-]
 
 function asStringArray(value: unknown) {
   return Array.isArray(value) ? value.map((item) => String(item)) : []
@@ -124,6 +103,7 @@ export function DataSyncCenter({
   last30MetricCount,
   last30ActivityDays,
   initialBackfillJob,
+  activeSupportedFieldIds,
 }: DataSyncCenterProps) {
   const router = useRouter()
   const [syncDate, setSyncDate] = useState(new Date().toISOString().split("T")[0])
@@ -142,6 +122,12 @@ export function DataSyncCenter({
   const backfillSkippedDates = useMemo(() => asStringArray(backfillJob?.skippedDates), [backfillJob?.skippedDates])
   const backfillFailedDates = useMemo(() => asStringArray(backfillJob?.failedDates), [backfillJob?.failedDates])
   const backfillUpdatedFields = useMemo(() => getUpdatedFields(backfillJob?.message), [backfillJob?.message])
+  const observedFieldIdSet = useMemo(() => new Set(activeSupportedFieldIds), [activeSupportedFieldIds])
+  const observedFieldCount = observedFieldIdSet.size
+  const totalSupportedFieldCount = useMemo(
+    () => SUPPORTED_FIELD_GROUPS.reduce((sum, group) => sum + group.fields.length, 0),
+    []
+  )
   const currentBackfillDate = useMemo(() => {
     if (!backfillJob || !["pending", "running"].includes(backfillJob.status)) {
       return null
@@ -424,20 +410,33 @@ export function DataSyncCenter({
       <SurfaceCard className="p-6">
         <div className="flex items-center justify-between gap-3">
           <h3 className="text-lg font-semibold text-white">已支持数据字段</h3>
-          <AccentPill tone="violet">按类型分组</AccentPill>
+          <div className="flex flex-wrap items-center gap-2">
+            <AccentPill tone="emerald">最近 30 天已拉到 {observedFieldCount}</AccentPill>
+            <AccentPill tone="violet">系统支持 {totalSupportedFieldCount}</AccentPill>
+          </div>
         </div>
-        <p className="mt-2 text-sm text-slate-400">同步页关注的是“能拉什么”和“这次实际更新了什么”，分析页再看具体图表。</p>
+        <p className="mt-2 text-sm text-slate-400">底层是系统支持字段，最近 30 天内实际拉到过的数据会直接高亮；未命中的字段保持待补齐状态。</p>
         <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {SUPPORTED_FIELD_GROUPS.map((group) => (
             <SubtleCard className="p-4" key={group.title}>
-              <div className="text-xs uppercase tracking-[0.2em] text-slate-400">{group.title}</div>
+              <div className="flex items-center justify-between gap-3">
+                <div className="text-xs uppercase tracking-[0.2em] text-slate-400">{group.title}</div>
+                <div className="text-xs text-slate-500">
+                  {group.fields.filter((field) => observedFieldIdSet.has(field.id)).length}/{group.fields.length}
+                </div>
+              </div>
               <div className="mt-3 flex flex-wrap gap-2">
                 {group.fields.map((field) => (
                   <span
-                    className="inline-flex rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-xs text-slate-300"
-                    key={field}
+                    className={
+                      observedFieldIdSet.has(field.id)
+                        ? "inline-flex items-center gap-1 rounded-full border border-emerald-400/25 bg-emerald-400/12 px-2.5 py-1 text-xs text-emerald-100 shadow-[0_0_0_1px_rgba(52,211,153,0.08)_inset]"
+                        : "inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-xs text-slate-400"
+                    }
+                    key={field.id}
                   >
-                    {field}
+                    <span className={observedFieldIdSet.has(field.id) ? "h-1.5 w-1.5 rounded-full bg-emerald-300" : "h-1.5 w-1.5 rounded-full bg-slate-600"} />
+                    {field.label}
                   </span>
                 ))}
               </div>
