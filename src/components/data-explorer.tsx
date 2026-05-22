@@ -4,7 +4,7 @@ import Link from "next/link"
 import { useMemo, useState } from "react"
 
 import { AITrainingReport } from "@/components/ai-training-report"
-import { MetricTile, SubtleCard, SurfaceCard } from "@/components/design-system"
+import { MetricTile, SurfaceCard } from "@/components/design-system"
 import {
   buildDailyTrendGroups,
   getBodyBatterySeries,
@@ -54,13 +54,6 @@ type TrendGroupSectionProps = {
   title: string
   description: string
   metrics: Array<TrendCardProps & { key: string }>
-  defaultOpen?: boolean
-}
-
-type InsightCard = {
-  title: string
-  value: string
-  detail: string
 }
 
 function formatDistance(distance: number | null) {
@@ -85,32 +78,6 @@ function formatDuration(duration: number | null) {
   }
 
   return `${hours}h ${minutes}m`
-}
-
-function formatChange(value: number | null, unit = "", digits = 0) {
-  if (value == null || Number.isNaN(value)) {
-    return "暂无对比"
-  }
-
-  const prefix = value > 0 ? "+" : value < 0 ? "-" : ""
-  return `${prefix}${Math.abs(value).toFixed(digits)}${unit}`
-}
-
-function formatValue(value: number | null, unit = "", digits = 0) {
-  if (value == null || Number.isNaN(value)) {
-    return "--"
-  }
-
-  return `${value.toFixed(digits)}${unit}`
-}
-
-function average(values: Array<number | null | undefined>) {
-  const numbers = values.filter((value): value is number => typeof value === "number" && Number.isFinite(value))
-  if (numbers.length === 0) {
-    return null
-  }
-
-  return numbers.reduce((sum, value) => sum + value, 0) / numbers.length
 }
 
 function getTopLevelKeys(raw: unknown) {
@@ -180,32 +147,20 @@ function TrendCard({ title, subtitle, unit, data }: TrendCardProps) {
   )
 }
 
-function TrendGroupSection({ title, description, metrics, defaultOpen = true }: TrendGroupSectionProps) {
-  const [open, setOpen] = useState(defaultOpen)
-
+function TrendGroupSection({ title, description, metrics }: TrendGroupSectionProps) {
   return (
     <section className="rounded-[1.75rem] border border-white/10 bg-white/[0.04] p-6 shadow-[0_18px_50px_rgba(15,23,42,0.24)] backdrop-blur-xl">
-      <button className="flex w-full items-start justify-between gap-4 text-left" onClick={() => setOpen((value) => !value)} type="button">
-        <div>
-          <h3 className="text-xl font-semibold tracking-tight text-white">{title}</h3>
-          <p className="mt-2 text-sm text-slate-400">{description}</p>
-        </div>
-        <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs text-slate-300">{open ? "收起" : "展开"}</span>
-      </button>
-
-      {open ? (
-        <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {metrics.map((metric) => (
-            <TrendCard data={metric.data} key={metric.key} subtitle={metric.subtitle} title={metric.title} unit={metric.unit} />
-          ))}
-        </div>
-      ) : null}
+      <div>
+        <h3 className="text-xl font-semibold tracking-tight text-white">{title}</h3>
+        <p className="mt-2 text-sm text-slate-400">{description}</p>
+      </div>
+      <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        {metrics.map((metric) => (
+          <TrendCard data={metric.data} key={metric.key} subtitle={metric.subtitle} title={metric.title} unit={metric.unit} />
+        ))}
+      </div>
     </section>
   )
-}
-
-function getActivityDays(activities: ActivityItem[]) {
-  return new Set(activities.map((activity) => activity.date)).size
 }
 
 function DetailChart({ title, unit, data }: { title: string; unit: string; data: NumericPoint[] }) {
@@ -250,6 +205,9 @@ function DetailChart({ title, unit, data }: { title: string; unit: string; data:
 
 export function DataExplorer({ userEmail, metrics, activities, initialAnalysisReport }: DataExplorerProps) {
   const [selectedDate, setSelectedDate] = useState(metrics[0]?.date ?? "")
+  const [selectedTrendGroupKey, setSelectedTrendGroupKey] = useState("")
+  const [selectedDetailChart, setSelectedDetailChart] = useState<"heartRate" | "stress" | "bodyBattery">("heartRate")
+  const [validationTab, setValidationTab] = useState<"activities" | "raw">("activities")
 
   const enrichedMetrics = useMemo(
     () =>
@@ -263,12 +221,9 @@ export function DataExplorer({ userEmail, metrics, activities, initialAnalysisRe
     [metrics]
   )
   const metricsAsc = useMemo(() => [...enrichedMetrics].sort((a, b) => a.date.localeCompare(b.date)), [enrichedMetrics])
-  const latestMetric = enrichedMetrics[0] ?? null
   const last7Metrics = useMemo(() => metricsAsc.slice(-7), [metricsAsc])
   const previous7Metrics = useMemo(() => metricsAsc.slice(-14, -7), [metricsAsc])
   const last30Metrics = useMemo(() => metricsAsc.slice(-30), [metricsAsc])
-  const last30Dates = useMemo(() => new Set(last30Metrics.map((metric) => metric.date)), [last30Metrics])
-  const last30Activities = useMemo(() => activities.filter((activity) => last30Dates.has(activity.date)), [activities, last30Dates])
 
   const selectedMetric = enrichedMetrics.find((metric) => metric.date === selectedDate) ?? enrichedMetrics[0] ?? null
   const latestActivities = activities.slice(0, 12)
@@ -291,221 +246,189 @@ export function DataExplorer({ userEmail, metrics, activities, initialAnalysisRe
   const heartRateSeries = selectedMetric ? getHeartRateSeries(selectedMetric.raw) : []
   const stressSeries = selectedMetric ? getStressSeries(selectedMetric.raw) : []
   const bodyBatterySeries = selectedMetric ? getBodyBatterySeries(selectedMetric.raw) : []
-  const overviewCards = useMemo<InsightCard[]>(
-    () => [
-      {
-        title: "最近 7 天睡眠评分均值",
-        value: formatValue(average(last7Metrics.map((metric) => metric.sleepScore)), "", 0),
-        detail: `较前 7 天 ${formatChange(
-          (() => {
-            const current = average(last7Metrics.map((metric) => metric.sleepScore))
-            const previous = average(previous7Metrics.map((metric) => metric.sleepScore))
-            return current != null && previous != null ? current - previous : null
-          })(),
-          "",
-          0
-        )}`,
-      },
-      {
-        title: "最近 7 天 HRV 均值",
-        value: formatValue(average(last7Metrics.map((metric) => metric.hrv)), " ms", 0),
-        detail: `较前 7 天 ${formatChange(
-          (() => {
-            const current = average(last7Metrics.map((metric) => metric.hrv))
-            const previous = average(previous7Metrics.map((metric) => metric.hrv))
-            return current != null && previous != null ? current - previous : null
-          })(),
-          " ms",
-          0
-        )}`,
-      },
-      {
-        title: "最近 7 天步数均值",
-        value: formatValue(average(last7Metrics.map((metric) => metric.steps)), "", 0),
-        detail: `${getActivityDays(last30Activities)} 天有活动，近 30 天共 ${activities.length} 条活动`,
-      },
-      {
-        title: "最近 7 天体重均值",
-        value: formatValue(average(last7Metrics.map((metric) => metric.weight)), " kg", 1),
-        detail: `较前 7 天 ${formatChange(
-          (() => {
-            const current = average(last7Metrics.map((metric) => metric.weight))
-            const previous = average(previous7Metrics.map((metric) => metric.weight))
-            return current != null && previous != null ? current - previous : null
-          })(),
-          " kg",
-          1
-        )}`,
-      },
-      {
-        title: "最近 30 天覆盖率",
-        value: `${last30Metrics.length}/30`,
-        detail: latestMetric ? `最新同步日 ${latestMetric.date}` : "暂无同步数据",
-      },
-    ],
-    [activities.length, last30Activities, last30Metrics.length, last7Metrics, latestMetric, previous7Metrics]
-  )
-  const keyTakeaways = useMemo(
-    () => [
-      {
-        title: "恢复状态",
-        content:
-          average(last7Metrics.map((metric) => metric.sleepScore)) != null
-            ? `最近 7 天睡眠评分均值 ${formatValue(average(last7Metrics.map((metric) => metric.sleepScore)), "", 0)}，HRV 均值 ${formatValue(
-                average(last7Metrics.map((metric) => metric.hrv)),
-                " ms",
-                0
-              )}。`
-            : "最近 7 天恢复类数据仍偏少，建议先补拉后再判断趋势。",
-      },
-      {
-        title: "心肺负荷",
-        content:
-          average(last7Metrics.map((metric) => metric.restingHr)) != null
-            ? `最近 7 天静息心率均值 ${formatValue(average(last7Metrics.map((metric) => metric.restingHr)), " bpm", 0)}，平均压力 ${formatValue(
-                average(last7Metrics.map((metric) => metric.stress)),
-                "",
-                0
-              )}。`
-            : "当前静息心率或压力样本不足，暂时无法形成稳定判断。",
-      },
-      {
-        title: "活动节奏",
-        content: `近 30 天已同步 ${last30Metrics.length} 天 Daily，记录到 ${last30Activities.length} 条活动，覆盖 ${getActivityDays(last30Activities)} 个活动日；最近 7 天强度分钟均值 ${formatValue(
-          average(last7Metrics.map((metric) => metric.intensityMinutes)),
-          " min",
-          0
-        )}。`,
-      },
-      {
-        title: "体重趋势",
-        content:
-          average(last7Metrics.map((metric) => metric.weight)) != null
-            ? `最近 7 天体重均值 ${formatValue(average(last7Metrics.map((metric) => metric.weight)), " kg", 1)}，可结合睡眠、HRV 与活动强度一起看恢复和负荷变化。`
-            : "当前还没有稳定的体重数据样本，建议同步包含体脂秤/手动称重的日期后再观察趋势。",
-      },
-    ],
-    [last30Activities, last30Metrics.length, last7Metrics]
-  )
+  const numberAverage = (values: Array<number | null | undefined>) => {
+    const valid = values.filter((value): value is number => typeof value === "number" && Number.isFinite(value))
+    if (valid.length === 0) {
+      return null
+    }
+
+    return valid.reduce((sum, value) => sum + value, 0) / valid.length
+  }
+  const formatMetric = (value: number | null, suffix = "", digits = 0) => {
+    if (value == null || Number.isNaN(value)) {
+      return "--"
+    }
+
+    return `${value.toFixed(digits)}${suffix}`
+  }
+  const formatDelta = (current: number | null, previous: number | null, suffix = "", digits = 0) => {
+    if (current == null || previous == null) {
+      return "暂无对比"
+    }
+
+    const delta = current - previous
+    const prefix = delta > 0 ? "+" : delta < 0 ? "-" : ""
+    return `${prefix}${Math.abs(delta).toFixed(digits)}${suffix}`
+  }
+  const analysisEvidence = [
+    {
+      label: "7 天睡眠均值",
+      value: formatMetric(numberAverage(last7Metrics.map((metric) => metric.sleepScore))),
+      detail: `较前 7 天 ${formatDelta(numberAverage(last7Metrics.map((metric) => metric.sleepScore)), numberAverage(previous7Metrics.map((metric) => metric.sleepScore)))}`,
+    },
+    {
+      label: "7 天 HRV 均值",
+      value: formatMetric(numberAverage(last7Metrics.map((metric) => metric.hrv)), " ms"),
+      detail: `较前 7 天 ${formatDelta(numberAverage(last7Metrics.map((metric) => metric.hrv)), numberAverage(previous7Metrics.map((metric) => metric.hrv)), " ms")}`,
+    },
+    {
+      label: "7 天静息心率",
+      value: formatMetric(numberAverage(last7Metrics.map((metric) => metric.restingHr)), " bpm"),
+      detail: `平均压力 ${formatMetric(numberAverage(last7Metrics.map((metric) => metric.stress)))}`,
+    },
+    {
+      label: "30 天覆盖率",
+      value: `${last30Metrics.length}/30`,
+      detail: metrics[0] ? `最新同步日 ${metrics[0].date}` : "暂无同步数据",
+    },
+  ]
+  const selectedTrendGroup = trendGroups.find((group) => group.key === selectedTrendGroupKey) ?? trendGroups[0] ?? null
+  const selectedChart = {
+    heartRate: { title: `${selectedMetric?.date ?? "--"} 心率分时图`, unit: "bpm", data: heartRateSeries },
+    stress: { title: `${selectedMetric?.date ?? "--"} 压力分时图`, unit: "", data: stressSeries },
+    bodyBattery: { title: `${selectedMetric?.date ?? "--"} Body Battery 分时图`, unit: "", data: bodyBatterySeries },
+  }[selectedDetailChart]
 
   return (
     <>
-      <section className="grid gap-6 xl:grid-cols-[1.25fr_0.75fr]">
-        <SurfaceCard className="p-7">
-          <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
-            <div>
-              <div className="text-xs uppercase tracking-[0.25em] text-cyan-300/72">Executive Summary</div>
-              <h2 className="mt-3 text-3xl font-semibold tracking-tight text-white">先看关键结论，再下钻趋势和单日详情</h2>
-              <p className="mt-3 max-w-3xl text-sm leading-7 text-slate-300">
-                这个页面现在优先回答 3 个问题：最近状态如何、关键指标怎么变化、数据覆盖是否足够支撑判断。
-              </p>
-            </div>
-            <div className="flex flex-wrap gap-3">
-              <Link
-                className="rounded-full border border-white/10 bg-white/[0.04] px-5 py-3 text-sm font-medium text-slate-200 transition hover:bg-white/[0.08]"
-                href="/data/calendar"
-              >
-                查看数据日历
-              </Link>
-              <Link className="rounded-full bg-cyan-300 px-5 py-3 text-sm font-medium text-slate-950 transition hover:bg-cyan-200" href="/data/sync">
-                查看同步状态
-              </Link>
-            </div>
-          </div>
-
-          <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-            {overviewCards.map((card) => <MetricTile detail={card.detail} key={card.title} label={card.title} value={card.value} />)}
-          </div>
-        </SurfaceCard>
-
-        <SurfaceCard className="p-7">
-          <div className="text-xs uppercase tracking-[0.25em] text-slate-400">Key Takeaways</div>
-          <div className="mt-4 space-y-4">
-            {keyTakeaways.map((item) => (
-              <SubtleCard key={item.title}>
-                <div className="text-sm font-semibold text-white">{item.title}</div>
-                <p className="mt-2 text-sm leading-6 text-slate-400">{item.content}</p>
-              </SubtleCard>
-            ))}
-          </div>
-          <div className="mt-4 rounded-[1.5rem] border border-dashed border-white/10 px-5 py-4 text-sm text-slate-400">
-            当前账号：<span className="font-medium text-slate-200">{userEmail}</span>
-          </div>
-        </SurfaceCard>
-      </section>
-
       <AITrainingReport initialReport={initialAnalysisReport} />
 
-      <section className="space-y-4">
-        <div>
-          <h2 className="text-2xl font-semibold tracking-tight text-white">日级趋势图</h2>
-          <p className="mt-2 text-sm text-slate-400">先用分组看整体状态，再进入单个指标。每张图都隐含了时间趋势、最新值和样本覆盖天数。</p>
+      <SurfaceCard className="p-7">
+        <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <div className="text-xs uppercase tracking-[0.25em] text-cyan-300/72">Trend Workspace</div>
+            <h2 className="mt-3 text-3xl font-semibold tracking-tight text-white">趋势工作台</h2>
+            <p className="mt-3 text-sm leading-7 text-slate-300">一次只看一个业务分组，把恢复、负荷、活动趋势收进同一个工作区。</p>
+          </div>
+          <div className="flex flex-wrap gap-3">
+            <Link className="rounded-full border border-white/10 bg-white/[0.04] px-5 py-3 text-sm font-medium text-slate-200 transition hover:bg-white/[0.08]" href="/data/calendar">
+              查看数据日历
+            </Link>
+            <Link className="rounded-full bg-cyan-300 px-5 py-3 text-sm font-medium text-slate-950 transition hover:bg-cyan-200" href="/data/sync">
+              查看同步状态
+            </Link>
+          </div>
         </div>
-        <div className="space-y-4">
-          {trendGroups.map((group, index) => (
-            <TrendGroupSection
-              defaultOpen={index === 0}
-              description={group.description}
+
+        <div className="mt-6 flex flex-wrap gap-2">
+          {trendGroups.map((group) => (
+            <button
+              className={`rounded-full px-4 py-2 text-sm transition ${
+                group.key === selectedTrendGroup?.key ? "bg-cyan-300 text-slate-950" : "border border-white/10 bg-white/[0.04] text-slate-200 hover:bg-white/[0.08]"
+              }`}
               key={group.key}
-              metrics={group.metrics}
-              title={group.title}
-            />
+              onClick={() => setSelectedTrendGroupKey(group.key)}
+              type="button"
+            >
+              {group.title}
+            </button>
           ))}
         </div>
-      </section>
+        {selectedTrendGroup ? <TrendGroupSection description={selectedTrendGroup.description} metrics={selectedTrendGroup.metrics} title={selectedTrendGroup.title} /> : null}
+      </SurfaceCard>
 
-      <section className="space-y-4">
+      <SurfaceCard className="p-7">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
-            <h2 className="text-2xl font-semibold tracking-tight text-white">单日深度分析</h2>
-            <p className="mt-2 text-sm text-slate-400">当你想追某一天状态时，在这里看该日的核心指标和分时变化，不用直接啃 Raw JSON。</p>
+            <div className="text-xs uppercase tracking-[0.25em] text-cyan-300/72">Daily Workbench</div>
+            <h2 className="mt-3 text-3xl font-semibold tracking-tight text-white">单日分析</h2>
+            <p className="mt-3 text-sm leading-7 text-slate-300">把当日指标和分时图放进一个工作台，不再分散成多张卡。</p>
+          </div>
+          <div className="rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-sm text-slate-300">当前账号 {userEmail}</div>
+        </div>
+
+        <div className="mt-6 flex flex-wrap gap-2">
+          {enrichedMetrics.slice(0, 12).map((metric) => (
+            <button
+              className={`rounded-full px-4 py-2 text-sm transition ${
+                metric.date === selectedMetric?.date ? "bg-cyan-300 text-slate-950" : "border border-white/10 bg-white/[0.04] text-slate-200 hover:bg-white/[0.08]"
+              }`}
+              key={metric.id}
+              onClick={() => setSelectedDate(metric.date)}
+              type="button"
+            >
+              {metric.date}
+            </button>
+          ))}
+        </div>
+
+        {selectedMetric ? (
+          <>
+            <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-6">
+              <MetricTile detail="恢复质量" label="睡眠评分" value={`${selectedMetric.sleepScore ?? "--"}`} />
+              <MetricTile detail="自主神经恢复" label="HRV" value={selectedMetric.hrv != null ? `${selectedMetric.hrv} ms` : "--"} />
+              <MetricTile detail="压力水平" label="压力" value={`${selectedMetric.stress ?? "--"}`} />
+              <MetricTile detail="训练 readiness 信号" label="训练准备度" value={`${selectedMetric.trainingReadiness ?? "--"}`} />
+              <MetricTile detail="总训练负荷" label="总强度分钟" value={`${selectedMetric.intensityMinutes ?? "--"}`} />
+              <MetricTile detail="Body Battery 峰值" label="Body Battery" value={`${selectedMetric.bodyBatteryHigh ?? "--"}`} />
+            </div>
+
+            <div className="mt-6 flex flex-wrap gap-2">
+              {[
+                { key: "heartRate", label: "心率" },
+                { key: "stress", label: "压力" },
+                { key: "bodyBattery", label: "Body Battery" },
+              ].map((item) => (
+                <button
+                  className={`rounded-full px-4 py-2 text-sm transition ${
+                    item.key === selectedDetailChart ? "bg-white text-slate-950" : "border border-white/10 bg-white/[0.04] text-slate-200 hover:bg-white/[0.08]"
+                  }`}
+                  key={item.key}
+                  onClick={() => setSelectedDetailChart(item.key as "heartRate" | "stress" | "bodyBattery")}
+                  type="button"
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
+
+            <div className="mt-4">
+              <DetailChart data={selectedChart.data} title={selectedChart.title} unit={selectedChart.unit} />
+            </div>
+          </>
+        ) : (
+          <div className="mt-6 rounded-[1.75rem] border border-dashed border-white/12 bg-white/[0.04] px-6 py-12 text-center text-sm text-slate-400">
+            还没有可分析的每日数据。
+          </div>
+        )}
+      </SurfaceCard>
+
+      <SurfaceCard className="p-6">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <div className="text-xs uppercase tracking-[0.25em] text-slate-400">Validation Center</div>
+            <h2 className="mt-3 text-2xl font-semibold tracking-tight text-white">验证信息</h2>
           </div>
           <div className="flex flex-wrap gap-2">
-            {enrichedMetrics.slice(0, 12).map((metric) => (
+            {[
+              { key: "activities", label: "活动记录" },
+              { key: "raw", label: "Raw JSON" },
+            ].map((item) => (
               <button
                 className={`rounded-full px-4 py-2 text-sm transition ${
-                  metric.date === selectedMetric?.date ? "bg-cyan-300 text-slate-950" : "border border-white/10 bg-white/[0.04] text-slate-200 hover:bg-white/[0.08]"
+                  item.key === validationTab ? "bg-white text-slate-950" : "border border-white/10 bg-white/[0.04] text-slate-200 hover:bg-white/[0.08]"
                 }`}
-                key={metric.id}
-                onClick={() => setSelectedDate(metric.date)}
+                key={item.key}
+                onClick={() => setValidationTab(item.key as "activities" | "raw")}
                 type="button"
               >
-                {metric.date}
+                {item.label}
               </button>
             ))}
           </div>
         </div>
 
-        {selectedMetric ? (
-          <>
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
-              <MetricTile detail="该日总步数" label="步数" value={`${selectedMetric.steps ?? "--"}`} />
-              <MetricTile detail="该日体重" label="体重" value={selectedMetric.weight != null ? `${selectedMetric.weight.toFixed(1)} kg` : "--"} />
-              <MetricTile detail="恢复 readiness 信号" label="训练准备度" value={`${selectedMetric.trainingReadiness ?? "--"}`} />
-              <MetricTile detail="该日总训练负荷" label="总强度分钟" value={`${selectedMetric.intensityMinutes ?? "--"}`} />
-              <MetricTile detail="中等强度分钟" label="中等强度" value={`${selectedMetric.moderateIntensityMinutes ?? "--"}`} />
-              <MetricTile detail="高强度分钟" label="高强度" value={`${selectedMetric.vigorousIntensityMinutes ?? "--"}`} />
-              <MetricTile detail="当日峰值电量" label="Body Battery High" value={`${selectedMetric.bodyBatteryHigh ?? "--"}`} />
-            </div>
-
-            <div className="grid gap-4 xl:grid-cols-3">
-              <DetailChart data={heartRateSeries} title={`${selectedMetric.date} 心率分时图`} unit="bpm" />
-              <DetailChart data={stressSeries} title={`${selectedMetric.date} 压力分时图`} unit="" />
-              <DetailChart data={bodyBatterySeries} title={`${selectedMetric.date} Body Battery 分时图`} unit="" />
-            </div>
-          </>
-        ) : (
-          <div className="rounded-[1.75rem] border border-dashed border-white/12 bg-white/[0.04] px-6 py-12 text-center text-sm text-slate-400">
-            还没有可分析的每日数据。
-          </div>
-        )}
-      </section>
-
-      <section className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
-        <SurfaceCard className="p-6">
-          <h2 className="text-2xl font-semibold tracking-tight text-white">活动摘要</h2>
-          <p className="mt-2 text-sm text-slate-400">先看活动列表确认训练记录是否到位，再决定是否补拉某些日期的活动详情。</p>
-
+        {validationTab === "activities" ? (
           <div className="mt-6 overflow-hidden rounded-3xl border border-white/10">
             <div className="grid grid-cols-[1.4fr_0.8fr_0.8fr_1fr] bg-white/[0.04] px-5 py-3 text-xs uppercase tracking-[0.2em] text-slate-500">
               <span>活动</span>
@@ -529,16 +452,9 @@ export function DataExplorer({ userEmail, metrics, activities, initialAnalysisRe
               <div className="px-5 py-8 text-sm text-slate-400">还没有活动记录。</div>
             )}
           </div>
-        </SurfaceCard>
-
-        <SurfaceCard className="p-6">
-          <h2 className="text-2xl font-semibold tracking-tight text-white">原始数据与字段核对</h2>
-          <p className="mt-2 text-sm text-slate-400">把 Raw JSON 收到页面末尾，只在你需要校验字段或扩展解析规则时再展开。</p>
-          <details className="mt-4 rounded-2xl border border-white/10 bg-white/[0.04] p-4">
-            <summary className="cursor-pointer list-none text-sm font-medium text-slate-200">
-              查看 {selectedMetric?.date ?? "当前日期"} Raw JSON
-            </summary>
-            <div className="mt-4 text-xs text-slate-400">
+        ) : (
+          <div className="mt-6 rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+            <div className="text-xs text-slate-400">
               顶层字段数：{getTopLevelKeys(selectedMetric?.raw).length}
               {getTopLevelKeys(selectedMetric?.raw).length > 0
                 ? `（${getTopLevelKeys(selectedMetric?.raw)
@@ -549,9 +465,9 @@ export function DataExplorer({ userEmail, metrics, activities, initialAnalysisRe
             <pre className="mt-4 max-h-[42rem] overflow-auto rounded-2xl bg-[#040b14] p-4 text-xs text-slate-300">
               {selectedMetric?.raw ? JSON.stringify(selectedMetric.raw, null, 2) : "暂无"}
             </pre>
-          </details>
-        </SurfaceCard>
-      </section>
+          </div>
+        )}
+      </SurfaceCard>
     </>
   )
 }

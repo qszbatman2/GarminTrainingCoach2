@@ -4,7 +4,7 @@ import { useState } from "react"
 import { signIn } from "next-auth/react"
 import { useRouter } from "next/navigation"
 
-import { AppPage, SubtleCard, SurfaceCard } from "@/components/design-system"
+import { AppPage, SurfaceCard } from "@/components/design-system"
 
 type Mode = "login" | "register"
 
@@ -64,25 +64,15 @@ export function AuthPanel() {
             把 Garmin 身体数据和训练记录，整理成你每天真会看的私人仪表盘。
           </h1>
           <p className="mt-6 max-w-2xl text-base leading-7 text-slate-300">
-            先登录账号，再绑定 Garmin。系统会保存全量原始数据，并把睡眠、HRV、静息心率和活动记录整理成可视化视图，为下一步 AI 分析打底。
+            先登录，再绑定 Garmin。系统会把训练建议、趋势数据和同步状态整理成清晰的产品视图。
           </p>
 
-          <div className="mt-10 grid gap-4 md:grid-cols-3">
-            <SubtleCard className="border-cyan-400/20 bg-cyan-400/8">
-              <div className="text-sm text-cyan-200">全量存档</div>
-              <div className="mt-2 text-2xl font-semibold">Raw JSON</div>
-              <div className="mt-2 text-sm text-slate-300">保留原始 Garmin 指标，后续可扩展 AI 和趋势分析。</div>
-            </SubtleCard>
-            <SubtleCard>
-              <div className="text-sm text-slate-300">跨端访问</div>
-              <div className="mt-2 text-2xl font-semibold">Web / PWA</div>
-              <div className="mt-2 text-sm text-slate-300">现在先把核心产品闭环做好，再接自动同步和安装体验。</div>
-            </SubtleCard>
-            <SubtleCard>
-              <div className="text-sm text-slate-300">接下来</div>
-              <div className="mt-2 text-2xl font-semibold">AI Coach</div>
-              <div className="mt-2 text-sm text-slate-300">等登录、绑定、展示稳定后，再接入大模型输出训练建议。</div>
-            </SubtleCard>
+          <div className="mt-8 flex flex-wrap gap-3">
+            {["AI 建议", "趋势分析", "同步追踪"].map((item) => (
+              <span className="rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-sm text-slate-200" key={item}>
+                {item}
+              </span>
+            ))}
           </div>
         </SurfaceCard>
 
@@ -151,10 +141,6 @@ export function AuthPanel() {
               {loading ? "提交中..." : mode === "login" ? "登录并进入面板" : "注册并进入面板"}
             </button>
           </form>
-
-          <p className="mt-6 text-sm leading-6 text-slate-400">
-            当前版本先使用邮箱密码登录。后续如果需要，再补邮箱验证码或第三方 OAuth。
-          </p>
         </SurfaceCard>
       </div>
     </AppPage>

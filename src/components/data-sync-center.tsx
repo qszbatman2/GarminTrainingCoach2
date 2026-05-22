@@ -114,6 +114,7 @@ export function DataSyncCenter({
   const [resumeLoading, setResumeLoading] = useState(false)
   const [backfillResult, setBackfillResult] = useState("")
   const [backfillJob, setBackfillJob] = useState<BackfillJobSnapshot | null>(initialBackfillJob)
+  const [resultTab, setResultTab] = useState<"failed" | "synced" | "skipped">("failed")
 
   const hasBinding = Boolean(garminEmail)
   const heartbeatStatus = useMemo(() => getHeartbeatStatus(backfillJob), [backfillJob])
@@ -138,6 +139,7 @@ export function DataSyncCenter({
   const canResumeBackfill =
     !!backfillJob &&
     (backfillJob.status === "failed" || (backfillJob.status === "running" && heartbeatStatus?.label === "长时间无心跳") || backfillJob.status === "pending")
+  const progressPercent = backfillJob && backfillJob.totalDates > 0 ? Math.min(100, Math.round((backfillJob.currentIndex / backfillJob.totalDates) * 100)) : 0
 
   useEffect(() => {
     if (!backfillJob || !["pending", "running"].includes(backfillJob.status)) {
@@ -272,150 +274,161 @@ export function DataSyncCenter({
 
   return (
     <div className="space-y-6">
-      <section className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
-        <SurfaceCard className="p-7">
-          <div className="text-xs uppercase tracking-[0.25em] text-cyan-300/72">Sync Overview</div>
-          <h2 className="mt-3 text-3xl font-semibold tracking-tight text-white">同步操作和拉取健康度集中在这里看</h2>
-          <p className="mt-3 max-w-3xl text-sm leading-7 text-slate-300">
-            这个页面专门处理同步、补拉和后台任务状态，避免和数据分析页混在一起。当前账号 {userEmail}，绑定 Garmin {garminEmail}。
-          </p>
-
-          <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-            <MetricTile detail={`最近 30 天覆盖 ${last30MetricCount}/30`} label="Daily 快照" value={`${metricsCount}`} />
-            <MetricTile detail={`近 30 天活动日 ${last30ActivityDays}`} label="活动记录" value={`${activitiesCount}`} />
-            <MetricTile detail="用于判断数据是否足够新" label="最新同步日期" value={latestMetricDate ?? "--"} />
-            <MetricTile detail={backfillJob ? `${backfillJob.currentIndex}/${backfillJob.totalDates}` : "暂无后台补拉任务"} label="补拉状态" value={backfillJob?.status ?? "idle"} />
-          </div>
-        </SurfaceCard>
-
-        <SurfaceCard className="p-7">
-          <div className="text-xs uppercase tracking-[0.25em] text-slate-400">Sync Actions</div>
-          <h2 className="mt-3 text-2xl font-semibold tracking-tight text-white">手动同步与补拉任务</h2>
-
-          <form className="mt-6 space-y-4" onSubmit={handleSync}>
-            <div>
-              <label className="mb-2 block text-sm text-slate-400">同步日期</label>
-              <input
-                className="w-full rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-white outline-none focus:border-cyan-400/60"
-                onChange={(event) => setSyncDate(event.target.value)}
-                required
-                type="date"
-                value={syncDate}
-              />
+      <SurfaceCard className="p-7">
+        <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
+          <div>
+            <div className="text-xs uppercase tracking-[0.25em] text-cyan-300/72">Sync Overview</div>
+            <h2 className="mt-3 text-3xl font-semibold tracking-tight text-white">同步控制台</h2>
+            <div className="mt-3 text-sm text-slate-400">
+              {userEmail} · {garminEmail}
             </div>
+            <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+              <MetricTile detail={`最近 30 天覆盖 ${last30MetricCount}/30`} label="Daily 快照" value={`${metricsCount}`} />
+              <MetricTile detail={`近 30 天活动日 ${last30ActivityDays}`} label="活动记录" value={`${activitiesCount}`} />
+              <MetricTile detail="用于判断数据是否足够新" label="最新同步日期" value={latestMetricDate ?? "--"} />
+              <MetricTile detail={backfillJob ? `${backfillJob.currentIndex}/${backfillJob.totalDates}` : "暂无后台补拉任务"} label="补拉状态" value={backfillJob?.status ?? "idle"} />
+            </div>
+          </div>
 
-            {syncResult ? <div className="rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-slate-300">{syncResult}</div> : null}
-            {syncUpdatedFields.length > 0 ? (
-              <div className="flex flex-wrap gap-2">
-                {syncUpdatedFields.map((field) => (
-                  <AccentPill key={field} tone="cyan">
-                    {field}
-                  </AccentPill>
-                ))}
+          <div>
+            <div className="text-xs uppercase tracking-[0.25em] text-slate-400">Actions</div>
+            <h2 className="mt-3 text-2xl font-semibold tracking-tight text-white">同步动作</h2>
+            <form className="mt-6 space-y-4" onSubmit={handleSync}>
+              <div>
+                <label className="mb-2 block text-sm text-slate-400">同步日期</label>
+                <input
+                  className="w-full rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-white outline-none focus:border-cyan-400/60"
+                  onChange={(event) => setSyncDate(event.target.value)}
+                  required
+                  type="date"
+                  value={syncDate}
+                />
               </div>
-            ) : null}
-
-            <button
-              className="w-full rounded-2xl bg-cyan-300 px-5 py-3 text-sm font-medium text-slate-950 transition hover:bg-cyan-200 disabled:cursor-not-allowed disabled:opacity-60"
-              disabled={syncLoading}
-              type="submit"
-            >
-              {syncLoading ? "同步中..." : "同步指定日期"}
-            </button>
-          </form>
-
-          {backfillResult ? <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-slate-300">{backfillResult}</div> : null}
-
-          <div className="mt-4 grid gap-3">
-            {canResumeBackfill ? (
-              <button
-                className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-700 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
-                disabled={resumeLoading}
-                onClick={handleResumeBackfill}
-                type="button"
-              >
-                {resumeLoading ? "恢复中..." : "恢复补拉任务"}
-              </button>
-            ) : null}
-            <button
-              className="rounded-2xl bg-white px-4 py-3 text-sm font-medium text-slate-950 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
-              disabled={backfillLoading || ["pending", "running"].includes(backfillJob?.status ?? "")}
-              onClick={handleBackfill}
-              type="button"
-            >
-              {backfillLoading ? "创建任务中..." : ["pending", "running"].includes(backfillJob?.status ?? "") ? "补拉任务执行中" : "补拉最近 30 天"}
-            </button>
-          </div>
-        </SurfaceCard>
-      </section>
-
-      {backfillJob ? (
-        <section className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
-          <SurfaceCard className="p-6">
-            <div className="flex items-center justify-between gap-3">
-              <h3 className="text-lg font-semibold text-white">任务运行日志</h3>
-              {heartbeatStatus ? <AccentPill tone={heartbeatStatus.label === "仍在运行" ? "emerald" : "amber"}>{heartbeatStatus.label}</AccentPill> : null}
-            </div>
-
-            <div className="mt-5 grid gap-4 md:grid-cols-2">
-              <MetricTile detail="当前任务命中的日期" label="当前检查日期" value={currentBackfillDate ?? "--"} />
-              <MetricTile detail="最近一步服务器反馈" label="当前步骤" value={getMessageWithoutUpdatedFields(backfillJob.message)} />
-              <MetricTile detail="任务启动时间" label="开始时间" value={formatDateTime(backfillJob.startedAt)} />
-              <MetricTile detail="最近运行心跳" label="最近心跳" value={formatDateTime(backfillJob.heartbeatAt)} />
-            </div>
-
-            {backfillJob.lastError ? <div className="mt-4 text-sm text-rose-300">最近错误：{backfillJob.lastError}</div> : null}
-            {backfillUpdatedFields.length > 0 ? (
-              <div className="mt-4">
-                <div className="text-xs uppercase tracking-[0.2em] text-cyan-300/72">本次累计更新</div>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {backfillUpdatedFields.map((field) => (
+              {syncResult ? <div className="rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-slate-300">{syncResult}</div> : null}
+              {syncUpdatedFields.length > 0 ? (
+                <div className="flex flex-wrap gap-2">
+                  {syncUpdatedFields.map((field) => (
                     <AccentPill key={field} tone="cyan">
                       {field}
                     </AccentPill>
                   ))}
                 </div>
-              </div>
-            ) : null}
-          </SurfaceCard>
-
-          <SurfaceCard className="p-6">
-            <h3 className="text-lg font-semibold text-white">逐日结果</h3>
-            <p className="mt-2 text-sm text-slate-400">按检查结果拆分为已补齐、跳过和失败，方便判断哪些日期还需要继续关注。</p>
-
-            <div className="mt-4 grid gap-4 md:grid-cols-3">
-              <SubtleCard>
-                <div className="text-xs uppercase tracking-[0.2em] text-emerald-300">已补齐</div>
-                <div className="mt-3 max-h-44 space-y-2 overflow-auto text-sm text-slate-300">
-                  {backfillSyncedDates.length > 0 ? backfillSyncedDates.map((date) => <div key={date}>{date}</div>) : <div className="text-slate-500">暂无</div>}
-                </div>
-              </SubtleCard>
-              <SubtleCard>
-                <div className="text-xs uppercase tracking-[0.2em] text-slate-400">无差异已跳过</div>
-                <div className="mt-3 max-h-44 space-y-2 overflow-auto text-sm text-slate-300">
-                  {backfillSkippedDates.length > 0 ? backfillSkippedDates.map((date) => <div key={date}>{date}</div>) : <div className="text-slate-500">暂无</div>}
-                </div>
-              </SubtleCard>
-              <SubtleCard>
-                <div className="text-xs uppercase tracking-[0.2em] text-rose-300">失败</div>
-                <div className="mt-3 max-h-44 space-y-2 overflow-auto text-sm text-slate-300">
-                  {backfillFailedDates.length > 0 ? backfillFailedDates.map((date) => <div key={date}>{date}</div>) : <div className="text-slate-500">暂无</div>}
-                </div>
-              </SubtleCard>
+              ) : null}
+              <button
+                className="w-full rounded-2xl bg-cyan-300 px-5 py-3 text-sm font-medium text-slate-950 transition hover:bg-cyan-200 disabled:cursor-not-allowed disabled:opacity-60"
+                disabled={syncLoading}
+                type="submit"
+              >
+                {syncLoading ? "同步中..." : "同步指定日期"}
+              </button>
+            </form>
+            {backfillResult ? <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-slate-300">{backfillResult}</div> : null}
+            <div className="mt-4 grid gap-3">
+              {canResumeBackfill ? (
+                <button
+                  className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-700 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
+                  disabled={resumeLoading}
+                  onClick={handleResumeBackfill}
+                  type="button"
+                >
+                  {resumeLoading ? "恢复中..." : "恢复补拉任务"}
+                </button>
+              ) : null}
+              <button
+                className="rounded-2xl bg-white px-4 py-3 text-sm font-medium text-slate-950 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+                disabled={backfillLoading || ["pending", "running"].includes(backfillJob?.status ?? "")}
+                onClick={handleBackfill}
+                type="button"
+              >
+                {backfillLoading ? "创建任务中..." : ["pending", "running"].includes(backfillJob?.status ?? "") ? "补拉任务执行中" : "补拉最近 30 天"}
+              </button>
             </div>
-          </SurfaceCard>
-        </section>
-      ) : null}
-
-      <SurfaceCard className="p-6">
-        <div className="flex items-center justify-between gap-3">
-          <h3 className="text-lg font-semibold text-white">已支持数据字段</h3>
-          <div className="flex flex-wrap items-center gap-2">
-            <AccentPill tone="emerald">最近 30 天已拉到 {observedFieldCount}</AccentPill>
-            <AccentPill tone="violet">系统支持 {totalSupportedFieldCount}</AccentPill>
           </div>
         </div>
-        <p className="mt-2 text-sm text-slate-400">底层是系统支持字段，最近 30 天内实际拉到过的数据会直接高亮；未命中的字段保持待补齐状态。</p>
+      </SurfaceCard>
+
+      {backfillJob ? (
+        <SurfaceCard className="p-6">
+          <div className="flex items-center justify-between gap-3">
+            <h3 className="text-lg font-semibold text-white">任务进度</h3>
+            {heartbeatStatus ? <AccentPill tone={heartbeatStatus.label === "仍在运行" ? "emerald" : "amber"}>{heartbeatStatus.label}</AccentPill> : null}
+          </div>
+          <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/[0.06]">
+            <div className="h-full rounded-full bg-cyan-300" style={{ width: `${progressPercent}%` }} />
+          </div>
+          <div className="mt-3 text-sm text-slate-300">
+            {progressPercent}% · {backfillJob.currentIndex}/{backfillJob.totalDates}
+          </div>
+
+          <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <MetricTile detail="当前任务命中的日期" label="当前检查日期" value={currentBackfillDate ?? "--"} />
+            <MetricTile detail="最近一步服务器反馈" label="当前步骤" value={getMessageWithoutUpdatedFields(backfillJob.message)} />
+            <MetricTile detail="任务启动时间" label="开始时间" value={formatDateTime(backfillJob.startedAt)} />
+            <MetricTile detail="最近运行心跳" label="最近心跳" value={formatDateTime(backfillJob.heartbeatAt)} />
+          </div>
+
+          <div className="mt-5 grid gap-4 md:grid-cols-3">
+            <MetricTile detail="已成功补齐日期" label="成功" value={`${backfillSyncedDates.length}`} />
+            <MetricTile detail="无变化而跳过" label="跳过" value={`${backfillSkippedDates.length}`} />
+            <MetricTile detail="需要人工关注" label="失败" value={`${backfillFailedDates.length}`} />
+          </div>
+
+          {backfillJob.lastError ? <div className="mt-4 text-sm text-rose-300">最近错误：{backfillJob.lastError}</div> : null}
+          {backfillUpdatedFields.length > 0 ? (
+            <div className="mt-4">
+              <div className="text-xs uppercase tracking-[0.2em] text-cyan-300/72">本次累计更新</div>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {backfillUpdatedFields.map((field) => (
+                  <AccentPill key={field} tone="cyan">
+                    {field}
+                  </AccentPill>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          <div className="mt-5 flex flex-wrap gap-2">
+            {[
+              { key: "failed", label: "失败日期" },
+              { key: "synced", label: "成功日期" },
+              { key: "skipped", label: "跳过日期" },
+            ].map((item) => (
+              <button
+                className={`rounded-full px-4 py-2 text-sm transition ${
+                  item.key === resultTab ? "bg-white text-slate-950" : "border border-white/10 bg-white/[0.04] text-slate-200 hover:bg-white/[0.08]"
+                }`}
+                key={item.key}
+                onClick={() => setResultTab(item.key as "failed" | "synced" | "skipped")}
+                type="button"
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+          <SubtleCard className="mt-4">
+            <div className="max-h-56 space-y-2 overflow-auto text-sm text-slate-300">
+              {(resultTab === "failed" ? backfillFailedDates : resultTab === "synced" ? backfillSyncedDates : backfillSkippedDates).length > 0 ? (
+                (resultTab === "failed" ? backfillFailedDates : resultTab === "synced" ? backfillSyncedDates : backfillSkippedDates).map((date) => (
+                  <div key={date}>{date}</div>
+                ))
+              ) : (
+                <div className="text-slate-500">暂无</div>
+              )}
+            </div>
+          </SubtleCard>
+        </SurfaceCard>
+      ) : null}
+
+      <details className="rounded-[1.75rem] border border-white/10 bg-white/[0.04] p-6 shadow-[0_18px_50px_rgba(15,23,42,0.24)] backdrop-blur-xl">
+        <summary className="cursor-pointer list-none">
+          <div className="flex items-center justify-between gap-3">
+            <h3 className="text-lg font-semibold text-white">字段覆盖详情</h3>
+            <div className="flex flex-wrap items-center gap-2">
+              <AccentPill tone="emerald">最近 30 天已拉到 {observedFieldCount}</AccentPill>
+              <AccentPill tone="violet">系统支持 {totalSupportedFieldCount}</AccentPill>
+            </div>
+          </div>
+        </summary>
         <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {SUPPORTED_FIELD_GROUPS.map((group) => (
             <SubtleCard className="p-4" key={group.title}>
@@ -443,7 +456,7 @@ export function DataSyncCenter({
             </SubtleCard>
           ))}
         </div>
-      </SurfaceCard>
+      </details>
     </div>
   )
 }

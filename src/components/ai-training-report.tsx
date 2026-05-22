@@ -65,11 +65,9 @@ export function AITrainingReport({ initialReport }: { initialReport: TrainingAna
     <SurfaceCard className="p-7">
       <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
         <div>
-          <div className="text-xs uppercase tracking-[0.25em] text-violet-300/80">AI Today Advice</div>
+          <div className="text-xs uppercase tracking-[0.25em] text-violet-300/80">AI Coach</div>
           <h2 className="mt-3 text-3xl font-semibold tracking-tight text-white">今日训练建议</h2>
-          <p className="mt-3 max-w-3xl text-sm leading-7 text-slate-300">
-            规则引擎会先按你的训练逻辑完成基线、疲劳分和负荷比判断，再由 AI 只生成一句建议和简短原因说明。
-          </p>
+          <p className="mt-3 max-w-3xl text-sm leading-7 text-slate-300">先看今天能不能练，再看一句建议和简短依据。</p>
         </div>
         <button
           className="rounded-full bg-violet-600 px-5 py-3 text-sm font-medium text-white transition hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-60"
@@ -83,20 +81,27 @@ export function AITrainingReport({ initialReport }: { initialReport: TrainingAna
 
       {error ? <div className="mt-5 rounded-2xl border border-rose-400/25 bg-rose-400/10 px-4 py-3 text-sm text-rose-200">{error}</div> : null}
 
-      <div className="mt-4 text-sm text-slate-400">最近更新时间：{formatTime(result?.updatedAt)}</div>
-
       {result ? (
         <div className="mt-6 space-y-5">
           <SubtleCard className="border-violet-400/15 bg-[linear-gradient(135deg,rgba(139,92,246,0.14),rgba(15,23,42,0.3))] p-6">
-            <div className="flex flex-wrap items-center gap-3">
-              <div className="text-sm font-semibold text-white">今日训练建议</div>
-              <AccentPill tone={statusTone(result.analysis.shouldTrain)}>{result.analysis.shouldTrain}</AccentPill>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="text-sm font-semibold text-white">AI 判断</div>
+                <AccentPill tone={statusTone(result.analysis.shouldTrain)}>{result.analysis.shouldTrain}</AccentPill>
+              </div>
+              <div className="text-xs text-slate-300">更新于 {formatTime(result.updatedAt)}</div>
             </div>
-            <div className="mt-4 text-2xl font-semibold tracking-tight text-white">{result.analysis.todayAdvice}</div>
+            <div className="mt-5 text-sm text-slate-300">今日建议</div>
+            <div className="mt-2 text-2xl font-semibold tracking-tight text-white">{result.analysis.todayAdvice}</div>
             <p className="mt-4 text-sm leading-7 text-slate-200">{result.analysis.reasonAnalysis}</p>
           </SubtleCard>
         </div>
-      ) : null}
+      ) : (
+        <SubtleCard className="mt-6 p-6">
+          <div className="text-sm text-slate-400">当前还没有 AI 报告</div>
+          <div className="mt-2 text-xl font-semibold text-white">先生成首份建议，再决定今天怎么练。</div>
+        </SubtleCard>
+      )}
     </SurfaceCard>
   )
 }
