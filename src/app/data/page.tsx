@@ -1,6 +1,7 @@
 import Link from "next/link"
 
 import { auth } from "@/auth"
+import { getOrCreateLatestAnalysisReport } from "@/lib/analysis-report"
 import { AuthPanel } from "@/components/auth-panel"
 import { DataExplorer } from "@/components/data-explorer"
 import prisma from "@/lib/prisma"
@@ -30,6 +31,34 @@ export default async function DataPage() {
 
   if (!user) {
     return <AuthPanel />
+  }
+
+  let initialAnalysisReport = null
+  if (user.metrics.length > 0) {
+    try {
+      initialAnalysisReport = await getOrCreateLatestAnalysisReport({
+        userId: user.id,
+        metrics: user.metrics.map((metric) => ({
+          id: metric.id,
+          date: metric.date,
+          sleepScore: metric.sleepScore,
+          hrv: metric.hrv,
+          restingHr: metric.restingHr,
+          stress: metric.stress,
+          raw: metric.raw,
+        })),
+        activities: user.activities.map((activity) => ({
+          id: activity.id,
+          name: activity.name,
+          type: activity.type,
+          distance: activity.distance,
+          duration: activity.duration,
+          date: activity.date,
+        })),
+      })
+    } catch (error) {
+      console.error("[Trae] Fix: failed to prefetch analysis report", error)
+    }
   }
 
   return (
@@ -97,6 +126,7 @@ export default async function DataPage() {
               : null
           }
           userEmail={user.email}
+          initialAnalysisReport={initialAnalysisReport}
         />
       </div>
     </main>

@@ -1,11 +1,10 @@
 import { NextResponse } from "next/server"
 
 import { auth } from "@/auth"
-import { createArkJsonCompletion } from "@/lib/ark"
+import { getOrCreateLatestAnalysisReport } from "@/lib/analysis-report"
 import prisma from "@/lib/prisma"
-import { buildTrainingContext, parseTrainingAnalysis } from "@/lib/training-analysis"
 
-export async function POST() {
+export async function POST(request: Request) {
   const session = await auth()
 
   if (!session?.user?.id) {
@@ -13,6 +12,7 @@ export async function POST() {
   }
 
   try {
+    const body = (await request.json().catch(() => ({}))) as { forceRefresh?: boolean }
     const user = await prisma.user.findUnique({
       where: { id: session.user.id },
       select: {
@@ -51,50 +51,16 @@ export async function POST() {
       return NextResponse.json({ error: "还没有可分析的 Garmin 日级数据" }, { status: 400 })
     }
 
-    const context = buildTrainingContext(user.metrics, user.activities)
-    const prompt = [
-      "请基于下面的 Garmin 训练摘要，输出训练分析 JSON。",
-      "要求：",
-      "1. 只能根据输入数据判断，严禁编造缺失指标。",
-      "2. 不要给医疗诊断，不要建议超出数据支持范围的结论。",
-      "3. todayAdvice 和 next7DaysAdvice 必须可执行、具体、简洁。",
-      "4. 输出必须是纯 JSON，字段固定为：",
-      JSON.stringify(
-        {
-          summary: "string",
-          recoveryStatus: "good | moderate | poor",
-          loadStatus: "low | balanced | high",
-          riskLevel: "low | medium | high",
-          keyFindings: ["string"],
-          todayAdvice: ["string"],
-          next7DaysAdvice: ["string"],
-          watchMetrics: ["string"],
-          missingData: ["string"],
-        },
-        null,
-        2
-      ),
-      "训练摘要：",
-      JSON.stringify(context, null, 2),
-    ].join("\n")
-
-    const content = await createArkJsonCompletion([
-      {
-        role: "system",
-        content: "你是一名谨慎的耐力训练教练，擅长根据恢复与训练负荷数据给出保守、可执行的训练建议。",
-      },
-      {
-        role: "user",
-        content: prompt,
-      },
-    ])
-
-    const analysis = parseTrainingAnalysis(content, context)
+    const report = await getOrCreateLatestAnalysisReport({
+      userId: user.id,
+      metrics: user.metrics,
+      activities: user.activities,
+      forceRefresh: Boolean(body.forceRefresh),
+    })
 
     return NextResponse.json({
       ok: true,
-      context,
-      analysis,
+      ...report,
     })
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "生成训练分析失败"

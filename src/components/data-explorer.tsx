@@ -13,6 +13,7 @@ import {
   getStressSeries,
   type NumericPoint,
 } from "@/lib/garmin-data"
+import type { TrainingAnalysisPayload } from "@/lib/training-analysis"
 
 type MetricItem = {
   id: string
@@ -40,6 +41,7 @@ type DataExplorerProps = {
   metrics: MetricItem[]
   activities: ActivityItem[]
   initialBackfillJob: BackfillJobSnapshot | null
+  initialAnalysisReport: TrainingAnalysisPayload | null
 }
 
 type BackfillJobSnapshot = {
@@ -268,7 +270,7 @@ function DetailChart({ title, unit, data }: { title: string; unit: string; data:
   )
 }
 
-export function DataExplorer({ userEmail, metrics, activities, initialBackfillJob }: DataExplorerProps) {
+export function DataExplorer({ userEmail, metrics, activities, initialBackfillJob, initialAnalysisReport }: DataExplorerProps) {
   const router = useRouter()
   const [selectedDate, setSelectedDate] = useState(metrics[0]?.date ?? "")
   const [backfillLoading, setBackfillLoading] = useState(false)
@@ -588,7 +590,7 @@ export function DataExplorer({ userEmail, metrics, activities, initialBackfillJo
         {backfillJob?.lastError ? <div className="mt-2 text-sm text-rose-600">最近错误：{backfillJob.lastError}</div> : null}
       </section>
 
-      <AITrainingReport />
+      <AITrainingReport initialReport={initialAnalysisReport} />
 
       <section className="space-y-4">
         <div>

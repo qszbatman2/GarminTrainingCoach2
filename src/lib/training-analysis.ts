@@ -1,6 +1,6 @@
 import { getMetricDisplayValues } from "@/lib/garmin-data"
 
-type DailyMetricInput = {
+export type DailyMetricInput = {
   id: string
   date: Date
   sleepScore: number | null
@@ -10,7 +10,7 @@ type DailyMetricInput = {
   raw: unknown
 }
 
-type ActivityInput = {
+export type ActivityInput = {
   id: string
   name: string
   type: string
@@ -76,6 +76,12 @@ export type TrainingAnalysisResult = {
   next7DaysAdvice: string[]
   watchMetrics: string[]
   missingData: string[]
+}
+
+export type TrainingAnalysisPayload = {
+  context: TrainingContext
+  analysis: TrainingAnalysisResult
+  updatedAt?: string
 }
 
 type EnrichedMetric = DailyMetricInput & ReturnType<typeof getMetricDisplayValues>

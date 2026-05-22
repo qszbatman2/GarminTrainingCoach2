@@ -23,6 +23,7 @@ model User {
   metrics        DailyMetric[]
   activities     Activity[]
   backfillJobs   BackfillJob[]
+  analysisReports AnalysisReport[]
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
 }
@@ -75,4 +76,19 @@ model BackfillJob {
   heartbeatAt  DateTime?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+}
+
+model AnalysisReport {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id])
+  reportType String
+  inputHash  String
+  context    Json
+  analysis   Json
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([userId, reportType])
+  @@index([userId, updatedAt])
 }
