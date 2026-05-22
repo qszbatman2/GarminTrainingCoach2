@@ -2,7 +2,7 @@
   "crons": [
     {
       "path": "/api/cron/garmin-reconcile",
-      "schedule": "0 0,6,12 * * *"
+      "schedule": "0 12 * * *"
     }
   ]
 }
