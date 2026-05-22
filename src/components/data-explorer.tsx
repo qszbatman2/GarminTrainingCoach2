@@ -4,6 +4,7 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useEffect, useMemo, useState } from "react"
 
+import { AITrainingReport } from "@/components/ai-training-report"
 import {
   buildDailyTrendGroups,
   getBodyBatterySeries,
@@ -586,6 +587,8 @@ export function DataExplorer({ userEmail, metrics, activities, initialBackfillJo
         {backfillJob?.message ? <div className="mt-4 text-sm text-slate-500">{backfillJob.message}</div> : null}
         {backfillJob?.lastError ? <div className="mt-2 text-sm text-rose-600">最近错误：{backfillJob.lastError}</div> : null}
       </section>
+
+      <AITrainingReport />
 
       <section className="space-y-4">
         <div>
