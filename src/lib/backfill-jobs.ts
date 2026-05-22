@@ -1,7 +1,7 @@
 import { Prisma } from "@prisma/client"
 
 import prisma from "@/lib/prisma"
-import { getDateKey, isActivityComplete, isMetricComplete, syncGarminDateForUser } from "@/lib/garmin-sync"
+import { getDateKey, syncGarminDateForUser } from "@/lib/garmin-sync"
 
 const BACKFILL_SECRET = () => process.env.CRON_SECRET ?? process.env.AUTH_SECRET ?? ""
 const JOB_CHUNK_SIZE = 4
@@ -35,9 +35,10 @@ export async function createBackfillJob(userId: string, days = 30) {
   const boundedDays = Math.max(1, Math.min(days, 30))
   const user = await prisma.user.findUnique({
     where: { id: userId },
-    include: {
-      metrics: true,
-      activities: true,
+    select: {
+      id: true,
+      garminEmail: true,
+      garminPassword: true,
     },
   })
 
@@ -50,34 +51,19 @@ export async function createBackfillJob(userId: string, days = 30) {
   }
 
   const targetDates = getBackfillDateRange(boundedDays)
-  const metricMap = new Map(user.metrics.map((metric) => [getDateKey(metric.date), metric]))
-  const activitiesByDate = new Map<string, typeof user.activities>()
-
-  for (const activity of user.activities) {
-    const dateKey = getDateKey(activity.date)
-    const current = activitiesByDate.get(dateKey) ?? []
-    current.push(activity)
-    activitiesByDate.set(dateKey, current)
-  }
-
-  const queuedDates = targetDates.filter((date) => {
-    const metric = metricMap.get(date)
-    const activities = activitiesByDate.get(date) ?? []
-    return !metric || !isMetricComplete(metric.raw) || activities.some((activity) => !isActivityComplete(activity.raw))
-  })
 
   const job = await prisma.backfillJob.create({
     data: {
       userId,
-      status: queuedDates.length > 0 ? "pending" : "completed",
+      status: targetDates.length > 0 ? "pending" : "completed",
       days: boundedDays,
-      totalDates: queuedDates.length,
-      targetDates: toJsonArray(queuedDates),
+      totalDates: targetDates.length,
+      targetDates: toJsonArray(targetDates),
       syncedDates: toJsonArray([]),
-      skippedDates: toJsonArray(targetDates.filter((date) => !queuedDates.includes(date))),
+      skippedDates: toJsonArray([]),
       failedDates: toJsonArray([]),
-      message: queuedDates.length > 0 ? "任务已创建，等待服务端执行" : "最近 30 天没有需要补拉的日期",
-      finishedAt: queuedDates.length > 0 ? null : new Date(),
+      message: targetDates.length > 0 ? "任务已创建，将逐日比对远端差异并补齐缺口" : "最近 30 天没有可检查的日期",
+      finishedAt: targetDates.length > 0 ? null : new Date(),
     },
     select: {
       id: true,
@@ -225,13 +211,17 @@ export async function processBackfillJob(jobId: string) {
   for (let index = job.currentIndex; index < endIndex; index += 1) {
     const date = targetDates[index]
     try {
-      await syncGarminDateForUser({
+      const result = await syncGarminDateForUser({
         userId: job.user.id,
         garminEmail: job.user.garminEmail,
         garminPassword: job.user.garminPassword,
         date,
       })
-      syncedDates.push(date)
+      if (result.dataChanged) {
+        syncedDates.push(date)
+      } else {
+        skippedDates.push(date)
+      }
     } catch (error: unknown) {
       failedDates.push(date)
       await prisma.backfillJob.update({
@@ -257,9 +247,9 @@ export async function processBackfillJob(jobId: string) {
       status: done ? "completed" : "running",
       message: done
         ? failedDates.length > 0
-          ? `补拉完成，但仍有 ${failedDates.length} 天失败`
-          : "补拉完成"
-        : `补拉进行中：${cursor}/${targetDates.length}`,
+          ? `比对完成：补齐 ${syncedDates.length} 天，跳过 ${skippedDates.length} 天，失败 ${failedDates.length} 天`
+          : `比对完成：补齐 ${syncedDates.length} 天，跳过 ${skippedDates.length} 天`
+        : `比对进行中：${cursor}/${targetDates.length}`,
       finishedAt: done ? new Date() : null,
       heartbeatAt: new Date(),
     },

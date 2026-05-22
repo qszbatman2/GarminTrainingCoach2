@@ -58,14 +58,16 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       success: true,
-      message: "Garmin data synced successfully",
+      message: syncResult.dataChanged ? "Garmin 数据已补齐缺口" : "当前日期数据已是最新，无需补充",
       metricId: syncResult.metricId,
       activitiesCount: syncResult.activitiesCount,
       metricComplete: syncResult.metricComplete,
       incompleteActivitiesCount: syncResult.incompleteActivitiesCount,
+      dataChanged: syncResult.dataChanged,
+      activityChangesCount: syncResult.activityChangesCount,
     })
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("[Trae] Fix: API Error in garmin-sync:", error)
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    return NextResponse.json({ error: error instanceof Error ? error.message : "同步失败" }, { status: 500 })
   }
 }
