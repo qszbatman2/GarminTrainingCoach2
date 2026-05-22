@@ -1,5 +1,6 @@
 'use client'
 
+import Link from "next/link"
 import { signOut } from "next-auth/react"
 import { useRouter } from "next/navigation"
 import { useMemo, useState } from "react"
@@ -178,6 +179,15 @@ export function DashboardShell({
             >
               退出登录
             </button>
+          </div>
+
+          <div className="mt-6 flex flex-wrap gap-3">
+            <Link
+              className="inline-flex rounded-full border border-cyan-300/30 bg-cyan-300/10 px-5 py-3 text-sm text-cyan-100 transition hover:bg-cyan-300/20"
+              href="/data"
+            >
+              查看全部已同步数据
+            </Link>
           </div>
         </section>
 
