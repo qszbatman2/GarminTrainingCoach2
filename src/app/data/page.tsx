@@ -22,10 +22,6 @@ export default async function DataPage() {
       activities: {
         orderBy: { date: "desc" },
       },
-      backfillJobs: {
-        orderBy: { createdAt: "desc" },
-        take: 1,
-      },
     },
   })
 
@@ -70,11 +66,17 @@ export default async function DataPage() {
               <p className="text-xs uppercase tracking-[0.35em] text-cyan-200/80">Data Explorer</p>
               <h1 className="mt-4 text-4xl font-semibold tracking-tight md:text-5xl">已同步数据总览</h1>
               <p className="mt-4 max-w-3xl text-sm leading-7 text-slate-300">
-                这里把已经同步到库里的 Garmin 数据，整理成按天趋势图和分时明细图，同时支持一键补拉最近 30 天缺失或不完整的数据。
+                这里专门负责数据呈现和分析，集中查看 AI 结论、关键趋势、单日深度分析和原始字段核对。
               </p>
             </div>
 
             <div className="flex flex-wrap gap-3">
+              <Link
+                className="rounded-full border border-white/15 px-5 py-3 text-sm text-slate-100 transition hover:bg-white/10"
+                href="/data/sync"
+              >
+                查看同步状态
+              </Link>
               <Link
                 className="rounded-full border border-white/15 px-5 py-3 text-sm text-slate-100 transition hover:bg-white/10"
                 href="/"
@@ -105,26 +107,6 @@ export default async function DataPage() {
             stress: metric.stress,
             raw: metric.raw,
           }))}
-          initialBackfillJob={
-            user.backfillJobs[0]
-              ? {
-                  id: user.backfillJobs[0].id,
-                  status: user.backfillJobs[0].status,
-                  totalDates: user.backfillJobs[0].totalDates,
-                  currentIndex: user.backfillJobs[0].currentIndex,
-                  syncedDates: user.backfillJobs[0].syncedDates,
-                  skippedDates: user.backfillJobs[0].skippedDates,
-                  failedDates: user.backfillJobs[0].failedDates,
-                  message: user.backfillJobs[0].message,
-                  lastError: user.backfillJobs[0].lastError,
-                  createdAt: user.backfillJobs[0].createdAt.toISOString(),
-                  updatedAt: user.backfillJobs[0].updatedAt.toISOString(),
-                  startedAt: user.backfillJobs[0].startedAt?.toISOString() ?? null,
-                  finishedAt: user.backfillJobs[0].finishedAt?.toISOString() ?? null,
-                  heartbeatAt: user.backfillJobs[0].heartbeatAt?.toISOString() ?? null,
-                }
-              : null
-          }
           userEmail={user.email}
           initialAnalysisReport={initialAnalysisReport}
         />

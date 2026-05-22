@@ -1,6 +1,7 @@
 import { auth } from "@/auth"
 import { AuthPanel } from "@/components/auth-panel"
 import { DashboardShell } from "@/components/dashboard-shell"
+import { getOrCreateLatestAnalysisReport } from "@/lib/analysis-report"
 import prisma from "@/lib/prisma"
 
 export default async function Home() {
@@ -15,11 +16,9 @@ export default async function Home() {
     include: {
       metrics: {
         orderBy: { date: "desc" },
-        take: 1,
       },
       activities: {
         orderBy: { date: "desc" },
-        take: 8,
       },
     },
   })
@@ -28,7 +27,33 @@ export default async function Home() {
     return <AuthPanel />
   }
 
-  const latestMetric = user.metrics[0]
+  let initialAnalysisReport = null
+  if (user.garminEmail && user.metrics.length > 0) {
+    try {
+      initialAnalysisReport = await getOrCreateLatestAnalysisReport({
+        userId: user.id,
+        metrics: user.metrics.map((metric) => ({
+          id: metric.id,
+          date: metric.date,
+          sleepScore: metric.sleepScore,
+          hrv: metric.hrv,
+          restingHr: metric.restingHr,
+          stress: metric.stress,
+          raw: metric.raw,
+        })),
+        activities: user.activities.map((activity) => ({
+          id: activity.id,
+          name: activity.name,
+          type: activity.type,
+          distance: activity.distance,
+          duration: activity.duration,
+          date: activity.date,
+        })),
+      })
+    } catch (error) {
+      console.error("[Trae] Fix: failed to prefetch homepage analysis report", error)
+    }
+  }
 
   return (
     <DashboardShell
@@ -42,18 +67,16 @@ export default async function Home() {
         raw: activity.raw,
       }))}
       garminEmail={user.garminEmail ?? ""}
-      latestMetric={
-        latestMetric
-          ? {
-              date: latestMetric.date.toISOString().slice(0, 10),
-              sleepScore: latestMetric.sleepScore,
-              hrv: latestMetric.hrv,
-              restingHr: latestMetric.restingHr,
-              stress: latestMetric.stress,
-              raw: latestMetric.raw,
-            }
-          : null
-      }
+      initialAnalysisReport={initialAnalysisReport}
+      metrics={user.metrics.map((metric) => ({
+        id: metric.id,
+        date: metric.date.toISOString().slice(0, 10),
+        sleepScore: metric.sleepScore,
+        hrv: metric.hrv,
+        restingHr: metric.restingHr,
+        stress: metric.stress,
+        raw: metric.raw,
+      }))}
       userEmail={user.email}
       userName={user.name ?? user.email.split("@")[0]}
     />

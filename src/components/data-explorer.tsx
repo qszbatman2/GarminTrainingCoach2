@@ -1,8 +1,7 @@
 'use client'
 
 import Link from "next/link"
-import { useRouter } from "next/navigation"
-import { useEffect, useMemo, useState } from "react"
+import { useMemo, useState } from "react"
 
 import { AITrainingReport } from "@/components/ai-training-report"
 import {
@@ -40,26 +39,7 @@ type DataExplorerProps = {
   userEmail: string
   metrics: MetricItem[]
   activities: ActivityItem[]
-  initialBackfillJob: BackfillJobSnapshot | null
   initialAnalysisReport: TrainingAnalysisPayload | null
-}
-
-type BackfillJobSnapshot = {
-  id: string
-  status: string
-  totalDates: number
-  currentIndex: number
-  targetDates?: unknown
-  syncedDates: unknown
-  skippedDates: unknown
-  failedDates: unknown
-  message: string | null
-  lastError?: string | null
-  createdAt: string
-  updatedAt: string
-  startedAt?: string | null
-  finishedAt?: string | null
-  heartbeatAt?: string | null
 }
 
 type TrendCardProps = {
@@ -223,47 +203,6 @@ function TrendGroupSection({ title, description, metrics, defaultOpen = true }: 
   )
 }
 
-function jsonArrayCount(value: unknown) {
-  return Array.isArray(value) ? value.length : 0
-}
-
-function asStringArray(value: unknown) {
-  return Array.isArray(value) ? value.map((item) => String(item)) : []
-}
-
-function formatDateTime(value?: string | null) {
-  if (!value) {
-    return "--"
-  }
-
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) {
-    return value
-  }
-
-  return date.toLocaleString("zh-CN", {
-    hour12: false,
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  })
-}
-
-function getHeartbeatStatus(job: BackfillJobSnapshot | null) {
-  if (!job || !job.heartbeatAt || !["pending", "running"].includes(job.status)) {
-    return null
-  }
-
-  const diffMs = Date.now() - new Date(job.heartbeatAt).getTime()
-  if (diffMs <= 90_000) {
-    return { label: "仍在运行", tone: "bg-emerald-50 text-emerald-600" }
-  }
-
-  return { label: "长时间无心跳", tone: "bg-amber-50 text-amber-700" }
-}
-
 function getActivityDays(activities: ActivityItem[]) {
   return new Set(activities.map((activity) => activity.date)).size
 }
@@ -308,13 +247,8 @@ function DetailChart({ title, unit, data }: { title: string; unit: string; data:
   )
 }
 
-export function DataExplorer({ userEmail, metrics, activities, initialBackfillJob, initialAnalysisReport }: DataExplorerProps) {
-  const router = useRouter()
+export function DataExplorer({ userEmail, metrics, activities, initialAnalysisReport }: DataExplorerProps) {
   const [selectedDate, setSelectedDate] = useState(metrics[0]?.date ?? "")
-  const [backfillLoading, setBackfillLoading] = useState(false)
-  const [resumeLoading, setResumeLoading] = useState(false)
-  const [backfillResult, setBackfillResult] = useState("")
-  const [backfillJob, setBackfillJob] = useState<BackfillJobSnapshot | null>(initialBackfillJob)
 
   const enrichedMetrics = useMemo(
     () =>
@@ -356,21 +290,6 @@ export function DataExplorer({ userEmail, metrics, activities, initialBackfillJo
   const heartRateSeries = selectedMetric ? getHeartRateSeries(selectedMetric.raw) : []
   const stressSeries = selectedMetric ? getStressSeries(selectedMetric.raw) : []
   const bodyBatterySeries = selectedMetric ? getBodyBatterySeries(selectedMetric.raw) : []
-  const backfillTargetDates = useMemo(() => asStringArray(backfillJob?.targetDates), [backfillJob?.targetDates])
-  const backfillSyncedDates = useMemo(() => asStringArray(backfillJob?.syncedDates), [backfillJob?.syncedDates])
-  const backfillSkippedDates = useMemo(() => asStringArray(backfillJob?.skippedDates), [backfillJob?.skippedDates])
-  const backfillFailedDates = useMemo(() => asStringArray(backfillJob?.failedDates), [backfillJob?.failedDates])
-  const currentBackfillDate = useMemo(() => {
-    if (!backfillJob || !["pending", "running"].includes(backfillJob.status)) {
-      return null
-    }
-
-    return backfillTargetDates[backfillJob.currentIndex] ?? null
-  }, [backfillJob, backfillTargetDates])
-  const heartbeatStatus = useMemo(() => getHeartbeatStatus(backfillJob), [backfillJob])
-  const canResumeBackfill =
-    !!backfillJob &&
-    (backfillJob.status === "failed" || (backfillJob.status === "running" && heartbeatStatus?.label === "长时间无心跳") || backfillJob.status === "pending")
   const overviewCards = useMemo<InsightCard[]>(
     () => [
       {
@@ -468,87 +387,6 @@ export function DataExplorer({ userEmail, metrics, activities, initialBackfillJo
     [last30Activities, last30Metrics.length, last7Metrics]
   )
 
-  useEffect(() => {
-    if (!backfillJob || !["pending", "running"].includes(backfillJob.status)) {
-      return
-    }
-
-    const timer = window.setInterval(async () => {
-      try {
-        const response = await fetch(`/api/garmin-backfill/${backfillJob.id}`, {
-          cache: "no-store",
-        })
-        const data = await response.json()
-
-        if (!response.ok) {
-          throw new Error(data.error || "获取任务状态失败")
-        }
-
-        setBackfillJob(data.job)
-
-        if (!["pending", "running"].includes(data.job?.status ?? "")) {
-          router.refresh()
-        }
-      } catch {
-        window.clearInterval(timer)
-      }
-    }, 3000)
-
-    return () => window.clearInterval(timer)
-  }, [backfillJob, router])
-
-  async function handleBackfill() {
-    setBackfillLoading(true)
-    setBackfillResult("")
-
-    try {
-      const response = await fetch("/api/garmin-backfill", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ days: 30 }),
-      })
-      const data = await response.json()
-
-      if (!response.ok) {
-        throw new Error(data.error || "补拉失败")
-      }
-
-      setBackfillJob(data.job)
-      setBackfillResult(data.job?.message || "后台补拉任务已创建，服务端开始执行。")
-    } catch (error: unknown) {
-      setBackfillResult(error instanceof Error ? error.message : "补拉失败")
-    } finally {
-      setBackfillLoading(false)
-    }
-  }
-
-  async function handleResumeBackfill() {
-    if (!backfillJob) {
-      return
-    }
-
-    setResumeLoading(true)
-    setBackfillResult("")
-
-    try {
-      const response = await fetch(`/api/garmin-backfill/${backfillJob.id}`, {
-        method: "POST",
-      })
-      const data = await response.json()
-
-      if (!response.ok) {
-        throw new Error(data.error || "恢复补拉失败")
-      }
-
-      setBackfillJob(data.job)
-      setBackfillResult(data.resumed ? "已重新触发后台补拉，继续观察日志与心跳。" : "当前任务无需恢复。")
-    } catch (error: unknown) {
-      setBackfillResult(error instanceof Error ? error.message : "恢复补拉失败")
-    } finally {
-      setResumeLoading(false)
-    }
-  }
-
   return (
     <>
       <section className="grid gap-6 xl:grid-cols-[1.25fr_0.75fr]">
@@ -568,24 +406,9 @@ export function DataExplorer({ userEmail, metrics, activities, initialBackfillJo
               >
                 查看数据日历
               </Link>
-              {canResumeBackfill ? (
-                <button
-                  className="rounded-full border border-amber-200 bg-amber-50 px-5 py-3 text-sm font-medium text-amber-700 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
-                  disabled={resumeLoading}
-                  onClick={handleResumeBackfill}
-                  type="button"
-                >
-                  {resumeLoading ? "恢复中..." : "恢复补拉任务"}
-                </button>
-              ) : null}
-              <button
-                className="rounded-full bg-slate-950 px-5 py-3 text-sm font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
-                disabled={backfillLoading || ["pending", "running"].includes(backfillJob?.status ?? "")}
-                onClick={handleBackfill}
-                type="button"
-              >
-                {backfillLoading ? "创建任务中..." : ["pending", "running"].includes(backfillJob?.status ?? "") ? "补拉任务执行中" : "补拉最近 30 天"}
-              </button>
+              <Link className="rounded-full bg-slate-950 px-5 py-3 text-sm font-medium text-white transition hover:bg-slate-800" href="/data/sync">
+                查看同步状态
+              </Link>
             </div>
           </div>
 
@@ -614,160 +437,6 @@ export function DataExplorer({ userEmail, metrics, activities, initialBackfillJo
             当前账号：<span className="font-medium text-slate-700">{userEmail}</span>
           </div>
         </article>
-      </section>
-
-      <section className="rounded-[1.75rem] border border-slate-200 bg-white p-6 shadow-[0_18px_50px_rgba(15,23,42,0.07)]">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <h2 className="text-2xl font-semibold tracking-tight">数据健康与补拉任务</h2>
-            <p className="mt-2 text-sm text-slate-500">这里看数据新鲜度、覆盖度和后台补拉执行状态，避免在图表区和操作区来回切换。</p>
-          </div>
-        </div>
-
-        {backfillResult ? <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">{backfillResult}</div> : null}
-
-        <div className="mt-4 grid gap-4 md:grid-cols-4">
-          <div className="rounded-3xl bg-slate-50 px-4 py-4">
-            <div className="text-xs uppercase tracking-[0.2em] text-slate-400">Daily 快照</div>
-            <div className="mt-2 text-lg font-semibold">{metrics.length}</div>
-            <div className="mt-1 text-sm text-slate-500">最近 30 天覆盖 {last30Metrics.length}/30</div>
-          </div>
-          <div className="rounded-3xl bg-slate-50 px-4 py-4">
-            <div className="text-xs uppercase tracking-[0.2em] text-slate-400">活动记录</div>
-            <div className="mt-2 text-lg font-semibold">{activities.length}</div>
-            <div className="mt-1 text-sm text-slate-500">近 30 天活动日 {getActivityDays(last30Activities)}</div>
-          </div>
-          <div className="rounded-3xl bg-slate-50 px-4 py-4">
-            <div className="text-xs uppercase tracking-[0.2em] text-slate-400">最新同步日期</div>
-            <div className="mt-2 text-lg font-semibold">{latestMetric?.date ?? "--"}</div>
-            <div className="mt-1 text-sm text-slate-500">用于判断当前数据是否足够新</div>
-          </div>
-          <div className="rounded-3xl bg-slate-50 px-4 py-4">
-            <div className="text-xs uppercase tracking-[0.2em] text-slate-400">补拉状态</div>
-            <div className="mt-2 text-lg font-semibold">{backfillJob?.status ?? "idle"}</div>
-            <div className="mt-1 text-sm text-slate-500">
-              {backfillJob ? `${backfillJob.currentIndex}/${backfillJob.totalDates}` : "暂无后台补拉任务"}
-            </div>
-          </div>
-        </div>
-
-        {backfillJob ? (
-          <div className="mt-4 grid gap-4 md:grid-cols-5">
-            <div className="rounded-3xl bg-slate-50 px-4 py-4">
-              <div className="text-xs uppercase tracking-[0.2em] text-slate-400">任务状态</div>
-              <div className="mt-2 text-lg font-semibold">{backfillJob.status}</div>
-            </div>
-            <div className="rounded-3xl bg-slate-50 px-4 py-4">
-              <div className="text-xs uppercase tracking-[0.2em] text-slate-400">进度</div>
-              <div className="mt-2 text-lg font-semibold">
-                {backfillJob.currentIndex}/{backfillJob.totalDates}
-              </div>
-            </div>
-            <div className="rounded-3xl bg-slate-50 px-4 py-4">
-              <div className="text-xs uppercase tracking-[0.2em] text-slate-400">已补成功</div>
-              <div className="mt-2 text-lg font-semibold">{backfillSyncedDates.length}</div>
-            </div>
-            <div className="rounded-3xl bg-slate-50 px-4 py-4">
-              <div className="text-xs uppercase tracking-[0.2em] text-slate-400">失败日期</div>
-              <div className="mt-2 text-lg font-semibold">{backfillFailedDates.length}</div>
-            </div>
-            <div className="rounded-3xl bg-slate-50 px-4 py-4">
-              <div className="text-xs uppercase tracking-[0.2em] text-slate-400">最近 7 天强度均值</div>
-              <div className="mt-2 text-lg font-semibold">{formatValue(average(last7Metrics.map((metric) => metric.intensityMinutes)), " min", 0)}</div>
-            </div>
-          </div>
-        ) : null}
-        {backfillJob?.message ? <div className="mt-4 text-sm text-slate-500">{backfillJob.message}</div> : null}
-        {backfillJob?.lastError ? <div className="mt-2 text-sm text-rose-600">最近错误：{backfillJob.lastError}</div> : null}
-
-        {backfillJob ? (
-          <div className="mt-6 grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
-            <article className="rounded-[1.5rem] border border-slate-200 bg-slate-50/60 p-5">
-              <div className="flex items-center justify-between gap-3">
-                <h3 className="text-lg font-semibold text-slate-900">任务运行日志</h3>
-                {heartbeatStatus ? <span className={`rounded-full px-3 py-1 text-xs font-medium ${heartbeatStatus.tone}`}>{heartbeatStatus.label}</span> : null}
-              </div>
-              <div className="mt-4 space-y-3 text-sm text-slate-600">
-                <div>
-                  当前检查日期：
-                  <span className="ml-2 font-medium text-slate-900">{currentBackfillDate ?? "--"}</span>
-                </div>
-                <div>
-                  当前步骤：
-                  <span className="ml-2 font-medium text-slate-900">{backfillJob.message ?? "--"}</span>
-                </div>
-                <div>
-                  开始时间：
-                  <span className="ml-2 font-medium text-slate-900">{formatDateTime(backfillJob.startedAt)}</span>
-                </div>
-                <div>
-                  最后心跳：
-                  <span className="ml-2 font-medium text-slate-900">{formatDateTime(backfillJob.heartbeatAt)}</span>
-                </div>
-                <div>
-                  最近更新：
-                  <span className="ml-2 font-medium text-slate-900">{formatDateTime(backfillJob.updatedAt)}</span>
-                </div>
-              </div>
-
-              <div className="mt-5 space-y-2">
-                {[
-                  "创建任务",
-                  "抓取远端日期数据",
-                  "比对本地已有字段",
-                  "补齐新增或更完整的字段",
-                  "写回结果并推进到下一天",
-                ].map((step, index) => {
-                  const activeIndex =
-                    backfillJob.status === "pending"
-                      ? 0
-                      : backfillJob.status === "running"
-                        ? 2
-                        : 4
-
-                  return (
-                    <div className="flex items-center gap-3 text-sm" key={step}>
-                      <span
-                        className={`inline-flex h-6 w-6 items-center justify-center rounded-full text-xs ${
-                          index <= activeIndex ? "bg-slate-900 text-white" : "bg-slate-200 text-slate-500"
-                        }`}
-                      >
-                        {index + 1}
-                      </span>
-                      <span className={index <= activeIndex ? "text-slate-900" : "text-slate-500"}>{step}</span>
-                    </div>
-                  )
-                })}
-              </div>
-            </article>
-
-            <article className="rounded-[1.5rem] border border-slate-200 bg-slate-50/60 p-5">
-              <h3 className="text-lg font-semibold text-slate-900">逐日结果</h3>
-              <p className="mt-2 text-sm text-slate-500">按检查结果拆成三类，方便判断为什么体重还没出来。</p>
-
-              <div className="mt-4 grid gap-4 md:grid-cols-3">
-                <div className="rounded-2xl bg-white p-4">
-                  <div className="text-xs uppercase tracking-[0.2em] text-emerald-500">已补齐</div>
-                  <div className="mt-3 max-h-44 space-y-2 overflow-auto text-sm text-slate-700">
-                    {backfillSyncedDates.length > 0 ? backfillSyncedDates.map((date) => <div key={date}>{date}</div>) : <div className="text-slate-400">暂无</div>}
-                  </div>
-                </div>
-                <div className="rounded-2xl bg-white p-4">
-                  <div className="text-xs uppercase tracking-[0.2em] text-slate-500">无差异已跳过</div>
-                  <div className="mt-3 max-h-44 space-y-2 overflow-auto text-sm text-slate-700">
-                    {backfillSkippedDates.length > 0 ? backfillSkippedDates.map((date) => <div key={date}>{date}</div>) : <div className="text-slate-400">暂无</div>}
-                  </div>
-                </div>
-                <div className="rounded-2xl bg-white p-4">
-                  <div className="text-xs uppercase tracking-[0.2em] text-rose-500">失败</div>
-                  <div className="mt-3 max-h-44 space-y-2 overflow-auto text-sm text-slate-700">
-                    {backfillFailedDates.length > 0 ? backfillFailedDates.map((date) => <div key={date}>{date}</div>) : <div className="text-slate-400">暂无</div>}
-                  </div>
-                </div>
-              </div>
-            </article>
-          </div>
-        ) : null}
       </section>
 
       <AITrainingReport initialReport={initialAnalysisReport} />
