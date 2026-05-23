@@ -27,6 +27,10 @@ type AbnormalityLevel = "normal" | "mild" | "severe" | "unknown"
 type LoadStatus = "balanced" | "high" | "low" | "unknown"
 type RecoveryCapacity = "normal" | "weak" | "unknown"
 type ToneHint = "supportive" | "firm"
+type WeeklyLoadConclusion = "不足" | "偏低" | "合理" | "偏高" | "过高" | "未知"
+type WeeklyOverallConclusion = "训练不足" | "训练合理" | "训练偏多" | "过度风险" | "未知"
+type WeeklyLoadFocus = "distance" | "duration"
+type WeeklyIntensitySource = "full" | "partial" | "minimal"
 
 type MetricDisplayValues = ReturnType<typeof getMetricDisplayValues>
 type ActivityDisplayValues = ReturnType<typeof getActivityDisplayValues>
@@ -64,6 +68,14 @@ type MetricAbnormality = {
   lower: number | null
   upper: number | null
   level: AbnormalityLevel
+}
+
+type PeriodComparison = {
+  actual: number | null
+  expectedToDate: number | null
+  projectedWeekTotal: number | null
+  monthWeeklyAverage: number | null
+  paceRatio: number | null
 }
 
 export type TrainingContext = {
@@ -163,6 +175,57 @@ export type TrainingContext = {
     hoursToBaseline: number | null
     recoveryCapacity: RecoveryCapacity
   }
+  weeklyAssessment: {
+    referenceDate: string | null
+    weekStart: string | null
+    monthStart: string | null
+    weekElapsedDays: number
+    monthElapsedDays: number
+    load: {
+      focus: WeeklyLoadFocus
+      totals: {
+        sessions: number
+        durationMin: number | null
+        distanceKm: number | null
+      }
+      duration: PeriodComparison
+      distance: PeriodComparison
+      sessions: PeriodComparison
+      score: number | null
+      conclusion: WeeklyLoadConclusion
+    }
+    intensity: {
+      source: WeeklyIntensitySource
+      totals: {
+        trainingLoad: number | null
+        intensityMinutes: number | null
+        vigorousIntensityMinutes: number | null
+        avgAerobicEffect: number | null
+        avgAnaerobicEffect: number | null
+      }
+      trainingLoad: PeriodComparison
+      intensityMinutes: PeriodComparison
+      vigorousIntensityMinutes: PeriodComparison
+      avgAerobicEffect: {
+        actual: number | null
+        monthAverage: number | null
+        ratio: number | null
+      }
+      avgAnaerobicEffect: {
+        actual: number | null
+        monthAverage: number | null
+        ratio: number | null
+      }
+      score: number | null
+      conclusion: WeeklyLoadConclusion
+    }
+    recoverySignals: string[]
+    overall: {
+      conclusion: WeeklyOverallConclusion
+      advice: string
+      ruleReason: string
+    }
+  }
   decision: {
     shouldTrain: DecisionStatus
     todayAdvice: string
@@ -175,6 +238,13 @@ export type TrainingAnalysisResult = {
   shouldTrain: DecisionStatus
   todayAdvice: string
   reasonAnalysis: string
+  weeklyLoadAssessment: {
+    loadConclusion: WeeklyLoadConclusion
+    intensityConclusion: WeeklyLoadConclusion
+    overallConclusion: WeeklyOverallConclusion
+    advice: string
+    reasonAnalysis: string
+  }
 }
 
 export type TrainingAnalysisPayload = {
@@ -232,9 +302,43 @@ function clamp(value: number, min = 0, max = 100) {
   return Math.min(Math.max(value, min), max)
 }
 
+function ratio(numerator: number | null, denominator: number | null, digits = 2) {
+  if (numerator == null || denominator == null || denominator <= 0) {
+    return null
+  }
+
+  return round(numerator / denominator, digits)
+}
+
 function getWindowItems<T extends { date: Date }>(items: T[], referenceDate: Date, days: number) {
   const end = referenceDate.getTime()
   const start = end - (days - 1) * 24 * 60 * 60 * 1000
+  return items.filter((item) => item.date.getTime() >= start && item.date.getTime() <= end)
+}
+
+function startOfDay(date: Date) {
+  const value = new Date(date)
+  value.setHours(0, 0, 0, 0)
+  return value
+}
+
+function startOfWeek(date: Date) {
+  const value = startOfDay(date)
+  const day = value.getDay()
+  const offset = day === 0 ? 6 : day - 1
+  value.setDate(value.getDate() - offset)
+  return value
+}
+
+function startOfMonth(date: Date) {
+  const value = startOfDay(date)
+  value.setDate(1)
+  return value
+}
+
+function getRangeItems<T extends { date: Date }>(items: T[], startDate: Date, endDate: Date) {
+  const start = startDate.getTime()
+  const end = endDate.getTime()
   return items.filter((item) => item.date.getTime() >= start && item.date.getTime() <= end)
 }
 
@@ -514,6 +618,10 @@ function getDaysDiff(later: Date, earlier: Date) {
   return Math.max(0, Math.round((later.getTime() - earlier.getTime()) / (1000 * 60 * 60 * 24)))
 }
 
+function getElapsedDaysInclusive(startDate: Date, endDate: Date) {
+  return getDaysDiff(startOfDay(endDate), startOfDay(startDate)) + 1
+}
+
 function getDaysSinceLastSession(referenceDate: Date, activities: EnrichedActivity[]) {
   const latest = activities[activities.length - 1]
   if (!latest) {
@@ -566,6 +674,271 @@ function getRecoveryCapacity(hoursToBaseline: number | null, latestDate: Date, l
   return "unknown"
 }
 
+function buildPeriodComparison(actual: number | null, monthTotal: number | null, weekElapsedDays: number, monthElapsedDays: number): PeriodComparison {
+  const monthDailyAverage =
+    monthTotal != null && monthElapsedDays > 0 ? monthTotal / monthElapsedDays : null
+  const expectedToDate =
+    monthDailyAverage != null ? monthDailyAverage * weekElapsedDays : null
+  const projectedWeekTotal = actual != null && weekElapsedDays > 0 ? (actual / weekElapsedDays) * 7 : null
+  const monthWeeklyAverage = monthDailyAverage != null ? monthDailyAverage * 7 : null
+
+  return {
+    actual: round(actual, 1),
+    expectedToDate: round(expectedToDate, 1),
+    projectedWeekTotal: round(projectedWeekTotal, 1),
+    monthWeeklyAverage: round(monthWeeklyAverage, 1),
+    paceRatio: ratio(projectedWeekTotal, monthWeeklyAverage, 2),
+  }
+}
+
+function getWeeklyLoadConclusion(score: number | null): WeeklyLoadConclusion {
+  if (score == null) {
+    return "未知"
+  }
+  if (score < 0.75) {
+    return "不足"
+  }
+  if (score < 0.9) {
+    return "偏低"
+  }
+  if (score <= 1.15) {
+    return "合理"
+  }
+  if (score <= 1.3) {
+    return "偏高"
+  }
+  return "过高"
+}
+
+function isDistanceType(activityType: string) {
+  const normalized = activityType.toLowerCase()
+  return ["run", "running", "ride", "cycling", "bike", "walk", "hike", "trail", "swim", "rowing"].some((keyword) =>
+    normalized.includes(keyword)
+  )
+}
+
+function getWeeklyLoadFocus(activities: EnrichedActivity[]): WeeklyLoadFocus {
+  if (activities.length === 0) {
+    return "duration"
+  }
+
+  const distanceCapableCount = activities.filter((activity) => activity.distanceKm != null && (activity.distanceKm ?? 0) > 0 && isDistanceType(activity.type)).length
+  return distanceCapableCount >= Math.ceil(activities.length / 2) ? "distance" : "duration"
+}
+
+function buildWeeklyAssessment(options: {
+  latestMetric: EnrichedMetric
+  metrics: EnrichedMetric[]
+  activities: EnrichedActivity[]
+  loadRatio: number | null
+  latestRecoveryHours: number | null
+  abnormalities: TrainingContext["abnormalities"]
+}) {
+  const { latestMetric, metrics, activities, loadRatio, latestRecoveryHours, abnormalities } = options
+  const referenceDate = latestMetric.date
+  const weekStart = startOfWeek(referenceDate)
+  const monthStart = startOfMonth(referenceDate)
+  const weekElapsedDays = getElapsedDaysInclusive(weekStart, referenceDate)
+  const monthElapsedDays = getElapsedDaysInclusive(monthStart, referenceDate)
+
+  const weekActivities = getRangeItems(activities, weekStart, referenceDate)
+  const monthActivities = getRangeItems(activities, monthStart, referenceDate)
+  const weekMetrics = getRangeItems(metrics, weekStart, referenceDate)
+  const monthMetrics = getRangeItems(metrics, monthStart, referenceDate)
+
+  const weekDurationMin = sum(weekActivities.map((activity) => activity.durationMin))
+  const monthDurationMin = sum(monthActivities.map((activity) => activity.durationMin))
+  const weekDistanceKm = sum(weekActivities.map((activity) => activity.distanceKm))
+  const monthDistanceKm = sum(monthActivities.map((activity) => activity.distanceKm))
+  const weekSessions = weekActivities.length
+  const monthSessions = monthActivities.length
+  const weekTrainingLoad = sum(weekActivities.map((activity) => activity.trainingLoad))
+  const monthTrainingLoad = sum(monthActivities.map((activity) => activity.trainingLoad))
+  const weekIntensityMinutes = sum(weekMetrics.map((metric) => metric.intensityMinutes))
+  const monthIntensityMinutes = sum(monthMetrics.map((metric) => metric.intensityMinutes))
+  const weekVigorousMinutes = sum(weekMetrics.map((metric) => metric.vigorousIntensityMinutes))
+  const monthVigorousMinutes = sum(monthMetrics.map((metric) => metric.vigorousIntensityMinutes))
+  const weekAvgAerobicEffect = average(weekActivities.map((activity) => activity.aerobicTrainingEffect))
+  const monthAvgAerobicEffect = average(monthActivities.map((activity) => activity.aerobicTrainingEffect))
+  const weekAvgAnaerobicEffect = average(weekActivities.map((activity) => activity.anaerobicTrainingEffect))
+  const monthAvgAnaerobicEffect = average(monthActivities.map((activity) => activity.anaerobicTrainingEffect))
+
+  const loadFocus = getWeeklyLoadFocus(weekActivities.length > 0 ? weekActivities : monthActivities)
+  const durationComparison = buildPeriodComparison(weekDurationMin, monthDurationMin, weekElapsedDays, monthElapsedDays)
+  const distanceComparison = buildPeriodComparison(weekDistanceKm, monthDistanceKm, weekElapsedDays, monthElapsedDays)
+  const sessionsComparison = buildPeriodComparison(weekSessions, monthSessions, weekElapsedDays, monthElapsedDays)
+  const trainingLoadComparison = buildPeriodComparison(weekTrainingLoad, monthTrainingLoad, weekElapsedDays, monthElapsedDays)
+  const intensityMinutesComparison = buildPeriodComparison(weekIntensityMinutes, monthIntensityMinutes, weekElapsedDays, monthElapsedDays)
+  const vigorousMinutesComparison = buildPeriodComparison(weekVigorousMinutes, monthVigorousMinutes, weekElapsedDays, monthElapsedDays)
+
+  const loadScore = round(
+    weightedAverage(
+      loadFocus === "distance"
+        ? {
+            duration: durationComparison.paceRatio,
+            distance: distanceComparison.paceRatio,
+            sessions: sessionsComparison.paceRatio,
+          }
+        : {
+            duration: durationComparison.paceRatio,
+            sessions: sessionsComparison.paceRatio,
+          },
+      loadFocus === "distance"
+        ? { duration: 0.45, distance: 0.35, sessions: 0.2 }
+        : { duration: 0.7, sessions: 0.3 }
+    ),
+    2
+  )
+
+  const hasFullIntensityFields = trainingLoadComparison.paceRatio != null && monthAvgAerobicEffect != null
+  const hasPartialIntensityFields = trainingLoadComparison.paceRatio != null
+  const intensitySource: WeeklyIntensitySource = hasFullIntensityFields ? "full" : hasPartialIntensityFields ? "partial" : "minimal"
+  const aerobicEffectRatio = ratio(weekAvgAerobicEffect, monthAvgAerobicEffect, 2)
+  const anaerobicEffectRatio = ratio(weekAvgAnaerobicEffect, monthAvgAnaerobicEffect, 2)
+  const intensityScore = round(
+    weightedAverage(
+      intensitySource === "full"
+        ? {
+            trainingLoad: trainingLoadComparison.paceRatio,
+            aerobic: aerobicEffectRatio,
+            anaerobic: anaerobicEffectRatio,
+            vigorous: vigorousMinutesComparison.paceRatio,
+          }
+        : intensitySource === "partial"
+          ? {
+              trainingLoad: trainingLoadComparison.paceRatio,
+              intensityMinutes: intensityMinutesComparison.paceRatio,
+              vigorous: vigorousMinutesComparison.paceRatio,
+            }
+          : {
+              intensityMinutes: intensityMinutesComparison.paceRatio,
+              vigorous: vigorousMinutesComparison.paceRatio,
+              loadRatio: loadRatio,
+            },
+      intensitySource === "full"
+        ? { trainingLoad: 0.45, aerobic: 0.2, anaerobic: 0.15, vigorous: 0.2 }
+        : intensitySource === "partial"
+          ? { trainingLoad: 0.55, intensityMinutes: 0.2, vigorous: 0.25 }
+          : { intensityMinutes: 0.45, vigorous: 0.35, loadRatio: 0.2 }
+    ),
+    2
+  )
+
+  const recoverySignals: string[] = []
+  if ((latestMetric.sleepScore ?? 100) < 60) {
+    recoverySignals.push(`睡眠评分 ${latestMetric.sleepScore} 分偏低`)
+  }
+  if ((latestMetric.sleepInterruptions ?? 0) > 5) {
+    recoverySignals.push(`睡眠中断 ${latestMetric.sleepInterruptions} 次`)
+  }
+  if (abnormalities.hrv.level === "mild" || abnormalities.hrv.level === "severe") {
+    recoverySignals.push(`HRV 较基线下降 ${Math.round(Math.abs((abnormalities.hrv.deltaPct ?? 0) * 100))}%`)
+  }
+  if (abnormalities.restingHr.level === "mild" || abnormalities.restingHr.level === "severe") {
+    recoverySignals.push(`静息心率较基线升高 ${Math.abs(abnormalities.restingHr.delta ?? 0)}bpm`)
+  }
+  if ((latestMetric.stress ?? 0) >= 60) {
+    recoverySignals.push(`压力评分 ${latestMetric.stress} 偏高`)
+  }
+  if ((latestRecoveryHours ?? 0) >= 24) {
+    recoverySignals.push(`建议恢复时长 ${latestRecoveryHours} 小时`)
+  }
+
+  const loadConclusion = getWeeklyLoadConclusion(loadScore)
+  const intensityConclusion = getWeeklyLoadConclusion(intensityScore)
+  const recoveryWeak = recoverySignals.length >= 2
+
+  let overallConclusion: WeeklyOverallConclusion = "训练合理"
+  let advice = "本周节奏基本合理，按当前计划推进即可。"
+  let ruleReason = "本周训练量和训练强度与本月平均节奏大体一致，没有明显过量或不足。"
+
+  if (
+    (loadRatio != null && loadRatio > 1.5) ||
+    (loadConclusion === "过高" && intensityConclusion === "过高") ||
+    ((intensityScore ?? 0) > 1.3 && (latestRecoveryHours ?? 0) >= 24) ||
+    ((vigorousMinutesComparison.paceRatio ?? 0) > 1.3 && recoverySignals.length >= 2)
+  ) {
+    overallConclusion = "过度风险"
+    advice = "本周负荷已经偏重，立即下调强度并优先恢复。"
+    ruleReason = "本周训练强度明显高于本月节奏，且恢复信号已出现恶化，继续堆量存在过度训练风险。"
+  } else if (
+    (loadConclusion === "不足" || loadConclusion === "偏低") &&
+    (intensityConclusion === "不足" || intensityConclusion === "偏低") &&
+    ((loadScore ?? 1) < 0.75 || (intensityScore ?? 1) < 0.8 || (loadRatio ?? 1) < 0.5)
+  ) {
+    overallConclusion = "训练不足"
+    advice = recoveryWeak ? "本周执行偏少，先修复恢复状态，再尽快回到正常训练频率。" : "本周训练明显偏少，接下来别再拖，尽快补回正常训练节奏。"
+    ruleReason = recoveryWeak
+      ? "本周训练量和训练强度都低于本月节奏，但当前恢复信号也不理想，说明不能简单视为执行懈怠。"
+      : "本周训练量和训练强度都显著低于本月平均节奏，当前更像训练执行不足而不是恢复性减量。"
+  } else if (
+    loadConclusion === "偏高" ||
+    intensityConclusion === "偏高" ||
+    loadConclusion === "过高" ||
+    intensityConclusion === "过高" ||
+    (loadRatio != null && loadRatio >= 1.2 && loadRatio <= 1.5) ||
+    recoveryWeak
+  ) {
+    overallConclusion = "训练偏多"
+    advice = recoveryWeak ? "本周负荷已经偏重，后半周要主动控强度、保恢复。" : "本周训练略偏多，后续保持但别继续加码。"
+    ruleReason = recoveryWeak
+      ? "本周训练量或训练强度已经偏高，同时恢复信号开始走弱，需要及时收住训练刺激。"
+      : "本周训练节奏略高于本月平均，但尚未进入明确过度风险区间。"
+  }
+
+  return {
+    referenceDate: toDateKey(referenceDate),
+    weekStart: toDateKey(weekStart),
+    monthStart: toDateKey(monthStart),
+    weekElapsedDays,
+    monthElapsedDays,
+    load: {
+      focus: loadFocus,
+      totals: {
+        sessions: weekSessions,
+        durationMin: round(weekDurationMin, 0),
+        distanceKm: round(weekDistanceKm, 1),
+      },
+      duration: durationComparison,
+      distance: distanceComparison,
+      sessions: sessionsComparison,
+      score: loadScore,
+      conclusion: loadConclusion,
+    },
+    intensity: {
+      source: intensitySource,
+      totals: {
+        trainingLoad: round(weekTrainingLoad, 0),
+        intensityMinutes: round(weekIntensityMinutes, 0),
+        vigorousIntensityMinutes: round(weekVigorousMinutes, 0),
+        avgAerobicEffect: round(weekAvgAerobicEffect, 1),
+        avgAnaerobicEffect: round(weekAvgAnaerobicEffect, 1),
+      },
+      trainingLoad: trainingLoadComparison,
+      intensityMinutes: intensityMinutesComparison,
+      vigorousIntensityMinutes: vigorousMinutesComparison,
+      avgAerobicEffect: {
+        actual: round(weekAvgAerobicEffect, 1),
+        monthAverage: round(monthAvgAerobicEffect, 1),
+        ratio: aerobicEffectRatio,
+      },
+      avgAnaerobicEffect: {
+        actual: round(weekAvgAnaerobicEffect, 1),
+        monthAverage: round(monthAvgAnaerobicEffect, 1),
+        ratio: anaerobicEffectRatio,
+      },
+      score: intensityScore,
+      conclusion: intensityConclusion,
+    },
+    recoverySignals,
+    overall: {
+      conclusion: overallConclusion,
+      advice,
+      ruleReason,
+    },
+  }
+}
+
 function buildFallbackReasonAnalysis(context: TrainingContext) {
   const parts: string[] = []
 
@@ -606,11 +979,55 @@ function buildFallbackReasonAnalysis(context: TrainingContext) {
   return merged.length > 300 ? `${merged.slice(0, 297)}...` : merged
 }
 
+function buildFallbackWeeklyAssessment(context: TrainingContext) {
+  const parts: string[] = []
+  const weekly = context.weeklyAssessment
+  const durationActual = weekly.load.duration.actual
+  const durationWeekAvg = weekly.load.duration.monthWeeklyAverage
+  const distanceActual = weekly.load.distance.actual
+  const distanceWeekAvg = weekly.load.distance.monthWeeklyAverage
+  const trainingLoadActual = weekly.intensity.trainingLoad.actual
+  const trainingLoadWeekAvg = weekly.intensity.trainingLoad.monthWeeklyAverage
+  const vigorousActual = weekly.intensity.vigorousIntensityMinutes.actual
+  const vigorousWeekAvg = weekly.intensity.vigorousIntensityMinutes.monthWeeklyAverage
+
+  parts.push(
+    `本周一到今天累计训练 ${weekly.load.totals.sessions} 次${durationActual != null ? `、总时长 ${durationActual} 分钟` : ""}${distanceActual != null ? `、总距离 ${distanceActual}km` : ""}`
+  )
+  if (durationWeekAvg != null || distanceWeekAvg != null) {
+    parts.push(
+      `按当前进度折算后${durationWeekAvg != null ? `，本周时长对应月周均 ${durationWeekAvg} 分钟` : ""}${distanceWeekAvg != null ? `${durationWeekAvg != null ? "，" : "，"}距离对应月周均 ${distanceWeekAvg}km` : ""}`
+    )
+  }
+  if (trainingLoadActual != null || vigorousActual != null) {
+    parts.push(
+      `训练强度方面${trainingLoadActual != null ? `，本周训练负荷 ${trainingLoadActual}` : ""}${trainingLoadWeekAvg != null ? `，月周均约 ${trainingLoadWeekAvg}` : ""}${vigorousActual != null ? `，高强度分钟 ${vigorousActual}` : ""}${vigorousWeekAvg != null ? `，月周均约 ${vigorousWeekAvg}` : ""}`
+    )
+  }
+  if (context.load.loadRatio != null) {
+    parts.push(`当前 ATL/CTL 为 ${context.load.loadRatio}`)
+  }
+  if (weekly.recoverySignals.length > 0) {
+    parts.push(`恢复校正信号包括：${weekly.recoverySignals.slice(0, 2).join("、")}`)
+  }
+  parts.push(weekly.overall.ruleReason)
+
+  const merged = `${parts.join("。")}。`
+  return merged.length > 300 ? `${merged.slice(0, 297)}...` : merged
+}
+
 function fallbackAnalysis(context: TrainingContext): TrainingAnalysisResult {
   return {
     shouldTrain: context.decision.shouldTrain,
     todayAdvice: context.decision.todayAdvice,
     reasonAnalysis: buildFallbackReasonAnalysis(context),
+    weeklyLoadAssessment: {
+      loadConclusion: context.weeklyAssessment.load.conclusion,
+      intensityConclusion: context.weeklyAssessment.intensity.conclusion,
+      overallConclusion: context.weeklyAssessment.overall.conclusion,
+      advice: context.weeklyAssessment.overall.advice,
+      reasonAnalysis: buildFallbackWeeklyAssessment(context),
+    },
   }
 }
 
@@ -699,6 +1116,39 @@ export function buildTrainingContext(metrics: DailyMetricInput[], activities: Ac
         lastHighIntensityDate: null,
         hoursToBaseline: null,
         recoveryCapacity: "unknown",
+      },
+      weeklyAssessment: {
+        referenceDate: null,
+        weekStart: null,
+        monthStart: null,
+        weekElapsedDays: 0,
+        monthElapsedDays: 0,
+        load: {
+          focus: "duration",
+          totals: { sessions: 0, durationMin: null, distanceKm: null },
+          duration: { actual: null, expectedToDate: null, projectedWeekTotal: null, monthWeeklyAverage: null, paceRatio: null },
+          distance: { actual: null, expectedToDate: null, projectedWeekTotal: null, monthWeeklyAverage: null, paceRatio: null },
+          sessions: { actual: null, expectedToDate: null, projectedWeekTotal: null, monthWeeklyAverage: null, paceRatio: null },
+          score: null,
+          conclusion: "未知",
+        },
+        intensity: {
+          source: "minimal",
+          totals: { trainingLoad: null, intensityMinutes: null, vigorousIntensityMinutes: null, avgAerobicEffect: null, avgAnaerobicEffect: null },
+          trainingLoad: { actual: null, expectedToDate: null, projectedWeekTotal: null, monthWeeklyAverage: null, paceRatio: null },
+          intensityMinutes: { actual: null, expectedToDate: null, projectedWeekTotal: null, monthWeeklyAverage: null, paceRatio: null },
+          vigorousIntensityMinutes: { actual: null, expectedToDate: null, projectedWeekTotal: null, monthWeeklyAverage: null, paceRatio: null },
+          avgAerobicEffect: { actual: null, monthAverage: null, ratio: null },
+          avgAnaerobicEffect: { actual: null, monthAverage: null, ratio: null },
+          score: null,
+          conclusion: "未知",
+        },
+        recoverySignals: [],
+        overall: {
+          conclusion: "未知",
+          advice: "当前周训练数据不足，暂时无法评估本周训练量是否合理。",
+          ruleReason: "缺少足够的本周训练与月度对照数据，无法形成可靠的周节奏判断。",
+        },
       },
       decision: {
         shouldTrain: "慎训",
@@ -808,6 +1258,15 @@ export function buildTrainingContext(metrics: DailyMetricInput[], activities: Ac
   )
   const hoursToBaseline = lastHighIntensityDate ? getHoursToBaseline(sortedMetrics, lastHighIntensityDate, baseline.restingHr.mean, baseline.hrv.mean) : null
   const recoveryCapacity = getRecoveryCapacity(hoursToBaseline, latestMetric.date, lastHighIntensityDate)
+  const latestRecoveryHours = latestMetric.recoveryHours ?? latestActivity?.recoveryHours ?? null
+  const weeklyAssessment = buildWeeklyAssessment({
+    latestMetric,
+    metrics: sortedMetrics,
+    activities: sortedActivities,
+    loadRatio,
+    latestRecoveryHours,
+    abnormalities,
+  })
 
   const severeAbnormal = Object.values(abnormalities).some((item) => item.level === "severe")
   let shouldTrain: DecisionStatus = "可训"
@@ -834,7 +1293,6 @@ export function buildTrainingContext(metrics: DailyMetricInput[], activities: Ac
     ruleReason = "7 天急性负荷明显高于 42 天慢性负荷，存在较高过度训练风险。"
   }
 
-  const latestRecoveryHours = latestMetric.recoveryHours ?? latestActivity?.recoveryHours ?? null
   if (latestRecoveryHours != null && latestRecoveryHours >= 48 && shouldTrain !== "不训") {
     shouldTrain = "慎训"
     todayAdvice = "建议继续恢复，避免高强度训练。"
@@ -990,6 +1448,7 @@ export function buildTrainingContext(metrics: DailyMetricInput[], activities: Ac
       hoursToBaseline,
       recoveryCapacity,
     },
+    weeklyAssessment,
     decision: {
       shouldTrain,
       todayAdvice,
@@ -1018,6 +1477,14 @@ function normalizeDecisionStatus(value: unknown, fallback: DecisionStatus): Deci
   return value === "可训" || value === "慎训" || value === "不训" ? value : fallback
 }
 
+function normalizeWeeklyLoadConclusion(value: unknown, fallback: WeeklyLoadConclusion): WeeklyLoadConclusion {
+  return value === "不足" || value === "偏低" || value === "合理" || value === "偏高" || value === "过高" || value === "未知" ? value : fallback
+}
+
+function normalizeWeeklyOverallConclusion(value: unknown, fallback: WeeklyOverallConclusion): WeeklyOverallConclusion {
+  return value === "训练不足" || value === "训练合理" || value === "训练偏多" || value === "过度风险" || value === "未知" ? value : fallback
+}
+
 export function parseTrainingAnalysis(content: string, context: TrainingContext): TrainingAnalysisResult {
   const fallback = fallbackAnalysis(context)
 
@@ -1025,11 +1492,22 @@ export function parseTrainingAnalysis(content: string, context: TrainingContext)
     const data = JSON.parse(extractJsonObject(content)) as Partial<TrainingAnalysisResult>
     const reasonAnalysis =
       typeof data.reasonAnalysis === "string" && data.reasonAnalysis.trim().length > 0 ? data.reasonAnalysis.trim().slice(0, 300) : fallback.reasonAnalysis
+    const weeklyData = typeof data.weeklyLoadAssessment === "object" && data.weeklyLoadAssessment ? data.weeklyLoadAssessment as Partial<TrainingAnalysisResult["weeklyLoadAssessment"]> : {}
 
     return {
       shouldTrain: normalizeDecisionStatus(data.shouldTrain, fallback.shouldTrain),
       todayAdvice: typeof data.todayAdvice === "string" && data.todayAdvice.trim() ? data.todayAdvice.trim() : fallback.todayAdvice,
       reasonAnalysis,
+      weeklyLoadAssessment: {
+        loadConclusion: normalizeWeeklyLoadConclusion(weeklyData.loadConclusion, fallback.weeklyLoadAssessment.loadConclusion),
+        intensityConclusion: normalizeWeeklyLoadConclusion(weeklyData.intensityConclusion, fallback.weeklyLoadAssessment.intensityConclusion),
+        overallConclusion: normalizeWeeklyOverallConclusion(weeklyData.overallConclusion, fallback.weeklyLoadAssessment.overallConclusion),
+        advice: typeof weeklyData.advice === "string" && weeklyData.advice.trim() ? weeklyData.advice.trim() : fallback.weeklyLoadAssessment.advice,
+        reasonAnalysis:
+          typeof weeklyData.reasonAnalysis === "string" && weeklyData.reasonAnalysis.trim()
+            ? weeklyData.reasonAnalysis.trim().slice(0, 300)
+            : fallback.weeklyLoadAssessment.reasonAnalysis,
+      },
     }
   } catch {
     return fallback

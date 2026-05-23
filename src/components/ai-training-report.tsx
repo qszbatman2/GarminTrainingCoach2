@@ -22,6 +22,21 @@ function statusTone(value: TrainingAnalysisPayload["analysis"]["shouldTrain"]) {
   }
 }
 
+function weeklyTone(value: TrainingAnalysisPayload["analysis"]["weeklyLoadAssessment"]["overallConclusion"]) {
+  switch (value) {
+    case "训练合理":
+      return "emerald"
+    case "训练偏多":
+      return "amber"
+    case "过度风险":
+      return "rose"
+    case "训练不足":
+      return "cyan"
+    default:
+      return "neutral"
+  }
+}
+
 function formatTime(value?: string) {
   if (!value) {
     return "--"
@@ -67,7 +82,7 @@ export function AITrainingReport({ initialReport }: { initialReport: TrainingAna
         <div>
           <div className="text-xs uppercase tracking-[0.25em] text-violet-300/80">AI Coach</div>
           <h2 className="mt-3 text-3xl font-semibold tracking-tight text-white">今日训练建议</h2>
-          <p className="mt-3 max-w-3xl text-sm leading-7 text-slate-300">先看今天能不能练，再看一句建议和简短依据。</p>
+          <p className="mt-3 max-w-3xl text-sm leading-7 text-slate-300">先看今天能不能练，再看一句建议；下面新增本周训练量评估，判断这周练得是否合理。</p>
         </div>
         <button
           className="rounded-full bg-violet-600 px-5 py-3 text-sm font-medium text-white transition hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-60"
@@ -94,6 +109,27 @@ export function AITrainingReport({ initialReport }: { initialReport: TrainingAna
             <div className="mt-5 text-sm text-slate-300">今日建议</div>
             <div className="mt-2 text-2xl font-semibold tracking-tight text-white">{result.analysis.todayAdvice}</div>
             <p className="mt-4 text-sm leading-7 text-slate-200">{result.analysis.reasonAnalysis}</p>
+
+            <div className="mt-6 border-t border-white/10 pt-6">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <div className="text-sm font-semibold text-white">本周训练量评估</div>
+                  <div className="mt-1 text-xs text-slate-400">对比本周当前节奏与本月均值、折算周均，判断训练量和强度是否合理。</div>
+                </div>
+                <AccentPill tone={weeklyTone(result.analysis.weeklyLoadAssessment.overallConclusion)}>
+                  {result.analysis.weeklyLoadAssessment.overallConclusion}
+                </AccentPill>
+              </div>
+
+              <div className="mt-4 flex flex-wrap gap-2">
+                <AccentPill tone="neutral">训练量 {result.analysis.weeklyLoadAssessment.loadConclusion}</AccentPill>
+                <AccentPill tone="neutral">强度 {result.analysis.weeklyLoadAssessment.intensityConclusion}</AccentPill>
+              </div>
+
+              <div className="mt-5 text-sm text-slate-300">本周建议</div>
+              <div className="mt-2 text-xl font-semibold tracking-tight text-white">{result.analysis.weeklyLoadAssessment.advice}</div>
+              <p className="mt-4 text-sm leading-7 text-slate-200">{result.analysis.weeklyLoadAssessment.reasonAnalysis}</p>
+            </div>
           </SubtleCard>
         </div>
       ) : (
