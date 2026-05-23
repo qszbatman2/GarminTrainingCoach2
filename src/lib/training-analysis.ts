@@ -26,6 +26,7 @@ type DecisionStatus = "可训" | "慎训" | "不训"
 type AbnormalityLevel = "normal" | "mild" | "severe" | "unknown"
 type LoadStatus = "balanced" | "high" | "low" | "unknown"
 type RecoveryCapacity = "normal" | "weak" | "unknown"
+type ToneHint = "supportive" | "firm"
 
 type MetricDisplayValues = ReturnType<typeof getMetricDisplayValues>
 type ActivityDisplayValues = ReturnType<typeof getActivityDisplayValues>
@@ -139,6 +140,9 @@ export type TrainingContext = {
   }
   activity: {
     sessions7d: number
+    daysSinceLastSession: number | null
+    consecutiveRestDays: number
+    toneHint: ToneHint
     latestSession: {
       date: string
       type: string
@@ -506,6 +510,42 @@ function getHoursToBaseline(metrics: EnrichedMetric[], startDate: Date, restingB
   return round((recovered.date.getTime() - startTime) / (1000 * 60 * 60), 0)
 }
 
+function getDaysDiff(later: Date, earlier: Date) {
+  return Math.max(0, Math.round((later.getTime() - earlier.getTime()) / (1000 * 60 * 60 * 24)))
+}
+
+function getDaysSinceLastSession(referenceDate: Date, activities: EnrichedActivity[]) {
+  const latest = activities[activities.length - 1]
+  if (!latest) {
+    return null
+  }
+
+  return getDaysDiff(referenceDate, latest.date)
+}
+
+function getConsecutiveRestDays(referenceDate: Date, activities: EnrichedActivity[]) {
+  if (activities.length === 0) {
+    return 0
+  }
+
+  const activityDays = new Set(activities.map((activity) => toDateKey(activity.date)))
+  let restDays = 0
+  const cursor = new Date(referenceDate)
+
+  while (true) {
+    const dayKey = toDateKey(cursor)
+    if (activityDays.has(dayKey)) {
+      return restDays
+    }
+
+    restDays += 1
+    cursor.setDate(cursor.getDate() - 1)
+    if (restDays > 30) {
+      return restDays
+    }
+  }
+}
+
 function getRecoveryCapacity(hoursToBaseline: number | null, latestDate: Date, lastHighIntensityDate: Date | null): RecoveryCapacity {
   if (hoursToBaseline != null) {
     if (hoursToBaseline <= 48) {
@@ -649,6 +689,9 @@ export function buildTrainingContext(metrics: DailyMetricInput[], activities: Ac
       },
       activity: {
         sessions7d: 0,
+        daysSinceLastSession: null,
+        consecutiveRestDays: 0,
+        toneHint: "supportive",
         latestSession: null,
       },
       recovery: {
@@ -682,6 +725,8 @@ export function buildTrainingContext(metrics: DailyMetricInput[], activities: Ac
 
   const recentActivities7d = getWindowItems(sortedActivities, latestMetric.date, 7)
   const recentActivities42d = getWindowItems(sortedActivities, latestMetric.date, 42)
+  const daysSinceLastSession = getDaysSinceLastSession(latestMetric.date, sortedActivities)
+  const consecutiveRestDays = getConsecutiveRestDays(latestMetric.date, sortedActivities)
   const recent7dDurationMin = sum(recentActivities7d.map((activity) => activity.durationMin))
   const recent42dTotalDurationMin = sum(recentActivities42d.map((activity) => activity.durationMin))
   const recent42dAvgWeekDurationMin = recent42dTotalDurationMin != null ? recent42dTotalDurationMin / 6 : null
@@ -809,6 +854,26 @@ export function buildTrainingContext(metrics: DailyMetricInput[], activities: Ac
     }
   }
 
+  const firmPushScenario =
+    shouldTrain === "可训" &&
+    consecutiveRestDays >= 2 &&
+    (fatigueTotalScore == null || fatigueTotalScore >= 60) &&
+    (loadRatio == null || loadRatio >= 0.5) &&
+    (latestRecoveryHours == null || latestRecoveryHours < 24)
+
+  let toneHint: ToneHint = "supportive"
+  if (firmPushScenario) {
+    toneHint = "firm"
+    todayAdvice =
+      consecutiveRestDays >= 4
+        ? `你已经连续休息 ${consecutiveRestDays} 天，今天别再拖，必须恢复正常训练节奏。`
+        : `你已经连续休息 ${consecutiveRestDays} 天，今天别再找理由，按计划完成训练。`
+    ruleReason =
+      consecutiveRestDays >= 4
+        ? `身体状态允许训练，但你已经连续 ${consecutiveRestDays} 天没有完成训练，当前更需要重启执行而不是继续休息。`
+        : `身体恢复指标允许训练，但你已经连续 ${consecutiveRestDays} 天没有训练，今天应优先恢复执行力。`
+  }
+
   const missingData: string[] = []
   if (baseline.validDays < 7) {
     missingData.push("近 28 天有效基线样本不足，已回退到原始 28 天窗口估算。")
@@ -900,6 +965,9 @@ export function buildTrainingContext(metrics: DailyMetricInput[], activities: Ac
     },
     activity: {
       sessions7d: recentActivities7d.length,
+      daysSinceLastSession,
+      consecutiveRestDays,
+      toneHint,
       latestSession: latestActivity
         ? {
             date: toDateKey(latestActivity.date),
