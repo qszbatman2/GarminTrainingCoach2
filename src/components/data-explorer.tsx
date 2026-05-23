@@ -216,7 +216,7 @@ function StackedColumnChart({
   const maxTotal = Math.max(...data.map((item) => item.segments.reduce((sum, segment) => sum + segment.value, 0)), 1)
 
   return (
-    <SubtleCard className="p-6">
+    <SubtleCard className="p-4">
       <div className="flex items-start justify-between gap-4">
         <div>
           <h3 className="text-xl font-semibold text-white">{title}</h3>
@@ -225,7 +225,7 @@ function StackedColumnChart({
         <AccentPill tone="neutral">{unit}</AccentPill>
       </div>
 
-      <div className="mt-5 flex flex-wrap gap-2">
+      <div className="mt-4 flex flex-wrap gap-2">
         {segments.map((segment) => (
           <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs text-slate-300" key={segment.key}>
             <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: segment.color }} />
@@ -234,15 +234,16 @@ function StackedColumnChart({
         ))}
       </div>
 
-      <div className="mt-6 grid grid-cols-7 gap-3 lg:grid-cols-10">
+      <div className="mt-5 grid grid-cols-5 gap-2 md:grid-cols-7 xl:grid-cols-10">
         {data.map((item) => {
           const total = item.segments.reduce((sum, segment) => sum + segment.value, 0)
           return (
-            <div className="flex flex-col items-center gap-3" key={item.label}>
-              <div className="flex h-52 w-full items-end justify-center rounded-[1.35rem] border border-white/8 bg-[#081322] px-2 py-3">
-                <div className="flex w-10 flex-col overflow-hidden rounded-full bg-white/[0.05]">
+            <div className="flex flex-col items-center gap-2" key={item.label}>
+              <div className="flex h-40 w-full items-end justify-center rounded-[1.1rem] border border-white/8 bg-[#081322] px-1.5 py-2">
+                <div className="flex h-full w-8 flex-col-reverse overflow-hidden rounded-full bg-white/[0.05] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.04)]">
                   {item.segments.map((segment) => (
                     <div
+                      className="w-full"
                       key={segment.key}
                       style={{
                         height: `${Math.max((segment.value / maxTotal) * 100, segment.value > 0 ? 4 : 0)}%`,
@@ -274,7 +275,7 @@ function RangeColumnChart({
   data: RangeDatum[]
 }) {
   return (
-    <SubtleCard className="p-6">
+    <SubtleCard className="p-4">
       <div className="flex items-start justify-between gap-4">
         <div>
           <h3 className="text-xl font-semibold text-white">{title}</h3>
@@ -283,22 +284,26 @@ function RangeColumnChart({
         <AccentPill tone="violet">0-100</AccentPill>
       </div>
 
-      <div className="mt-6 grid grid-cols-7 gap-3 lg:grid-cols-10">
+      <div className="mt-5 grid grid-cols-5 gap-2 md:grid-cols-7 xl:grid-cols-10">
         {data.map((item) => {
           const low = clamp(item.low, 0, 100)
           const high = clamp(item.high, 0, 100)
           const bottom = 100 - high
           const height = Math.max(high - low, 3)
           return (
-            <div className="flex flex-col items-center gap-3" key={item.label}>
-              <div className="relative h-56 w-full rounded-[1.35rem] border border-white/8 bg-[#081322] px-2 py-3">
-                <div className="absolute inset-x-1/2 top-3 bottom-3 w-px -translate-x-1/2 bg-white/10" />
+            <div className="flex flex-col items-center gap-2" key={item.label}>
+              <div className="relative h-44 w-full rounded-[1.1rem] border border-white/8 bg-[#081322] px-1.5 py-2">
+                <div className="absolute inset-x-1/2 top-2 bottom-2 w-px -translate-x-1/2 bg-white/10" />
                 <div
-                  className="absolute inset-x-1/2 w-3 -translate-x-1/2 rounded-full bg-[linear-gradient(180deg,rgba(168,85,247,0.95),rgba(34,211,238,0.95))] shadow-[0_0_18px_rgba(34,211,238,0.32)]"
-                  style={{ top: `calc(${bottom}% + 0.75rem)`, height: `calc(${height}% - 0.2rem)` }}
+                  className="absolute inset-x-1/2 w-3 -translate-x-1/2 rounded-full shadow-[0_0_18px_rgba(34,211,238,0.32)]"
+                  style={{
+                    top: `calc(${bottom}% + 0.5rem)`,
+                    height: `calc(${height}% - 0.1rem)`,
+                    backgroundImage: "linear-gradient(180deg, rgba(168,85,247,0.95), rgba(34,211,238,0.95))",
+                  }}
                 />
-                <div className="absolute inset-x-1/2 h-4 w-4 -translate-x-1/2 rounded-full border border-violet-300/60 bg-violet-300 shadow-[0_0_20px_rgba(196,181,253,0.38)]" style={{ top: `calc(${bottom}% + 0.2rem)` }} />
-                <div className="absolute inset-x-1/2 h-4 w-4 -translate-x-1/2 rounded-full border border-cyan-300/60 bg-cyan-300 shadow-[0_0_18px_rgba(34,211,238,0.32)]" style={{ top: `calc(${100 - low}% - 0.65rem)` }} />
+                <div className="absolute inset-x-1/2 h-3.5 w-3.5 -translate-x-1/2 rounded-full border border-violet-300/60 bg-violet-300 shadow-[0_0_20px_rgba(196,181,253,0.38)]" style={{ top: `calc(${bottom}% + 0.15rem)` }} />
+                <div className="absolute inset-x-1/2 h-3.5 w-3.5 -translate-x-1/2 rounded-full border border-cyan-300/60 bg-cyan-300 shadow-[0_0_18px_rgba(34,211,238,0.32)]" style={{ top: `calc(${100 - low}% - 0.5rem)` }} />
               </div>
               <div className="text-center">
                 <div className="text-sm font-medium text-white">
@@ -327,7 +332,7 @@ function MultiLineChart({
   const bounds = getChartBounds(availableLines.map((line) => line.data))
 
   return (
-    <SubtleCard className="p-6">
+    <SubtleCard className="p-4">
       <div className="flex items-start justify-between gap-4">
         <div>
           <h3 className="text-xl font-semibold text-white">{title}</h3>
@@ -335,7 +340,7 @@ function MultiLineChart({
         </div>
       </div>
 
-      <div className="mt-5 flex flex-wrap gap-2">
+      <div className="mt-4 flex flex-wrap gap-2">
         {lines.map((line) => (
           <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs text-slate-300" key={line.label}>
             <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: line.color }} />
@@ -346,7 +351,7 @@ function MultiLineChart({
 
       {availableLines.length > 0 ? (
         <>
-          <svg className="mt-6 h-56 w-full" preserveAspectRatio="none" viewBox="0 0 100 100">
+          <svg className="mt-5 block h-44 w-full" preserveAspectRatio="none" viewBox="0 0 100 100">
             <path d="M0,72 100,72" fill="none" stroke="rgba(148,163,184,0.16)" strokeDasharray="4 4" />
             <path d="M0,40 100,40" fill="none" stroke="rgba(148,163,184,0.12)" strokeDasharray="4 4" />
             {availableLines.map((line) => (
@@ -361,7 +366,7 @@ function MultiLineChart({
               />
             ))}
           </svg>
-          <div className="mt-3 flex items-center justify-between text-xs text-slate-500">
+          <div className="mt-2 flex items-center justify-between text-xs text-slate-500">
             <span>{availableLines[0]?.data[0]?.label}</span>
             <span>{availableLines[0]?.data[Math.floor(availableLines[0].data.length / 2)]?.label}</span>
             <span>{availableLines[0]?.data[availableLines[0].data.length - 1]?.label}</span>
@@ -436,9 +441,10 @@ function TimeSeriesChart({
   color: string
 }) {
   const bounds = getChartBounds([data])
+  const barWidth = data.length > 0 ? Math.max(1.8, 72 / data.length) : 2
 
   return (
-    <SubtleCard className="p-6">
+    <SubtleCard className="p-4">
       <div className="flex items-start justify-between gap-4">
         <div>
           <h3 className="text-xl font-semibold text-white">{title}</h3>
@@ -449,22 +455,22 @@ function TimeSeriesChart({
 
       {data.length >= 2 ? (
         <>
-          <svg className="mt-6 h-60 w-full" preserveAspectRatio="none" viewBox="0 0 100 100">
+          <svg className="mt-5 block h-48 w-full" preserveAspectRatio="none" viewBox="0 0 100 100">
             <path d="M0,76 100,76" fill="none" stroke="rgba(148,163,184,0.14)" strokeDasharray="4 4" />
             <path d="M0,48 100,48" fill="none" stroke="rgba(148,163,184,0.1)" strokeDasharray="4 4" />
-            {variant === "area" ? <polygon fill="rgba(34,211,238,0.18)" points={buildAreaPath(data, bounds.min, bounds.max)} /> : null}
+            {variant === "area" ? <polygon fill={`${color}33`} points={buildAreaPath(data, bounds.min, bounds.max)} /> : null}
             {variant === "bars"
               ? data.map((point, index) => {
                   const x = (index / Math.max(data.length - 1, 1)) * 100
                   const height = ((point.value - bounds.min) / (bounds.max - bounds.min || 1)) * 100
-                  return <rect fill={color} height={Math.max(height, 2)} key={`${point.label}-${index}`} rx="1.2" width="1.6" x={x} y={100 - height} />
+                  return <rect fill={color} height={Math.max(height, 2)} key={`${point.label}-${index}`} rx="1.2" width={barWidth} x={clamp(x - barWidth / 2, 0, 100 - barWidth)} y={100 - height} />
                 })
               : null}
             {variant !== "bars" ? (
               <polyline fill="none" points={buildLinePath(data, bounds.min, bounds.max)} stroke={color} strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
             ) : null}
           </svg>
-          <div className="mt-3 flex items-center justify-between text-xs text-slate-500">
+          <div className="mt-2 flex items-center justify-between text-xs text-slate-500">
             <span>{data[0]?.label}</span>
             <span>{data[Math.floor(data.length / 2)]?.label}</span>
             <span>{data[data.length - 1]?.label}</span>
@@ -705,7 +711,8 @@ export function DataExplorer({ userEmail, metrics, activities, initialAnalysisRe
     <>
       <AITrainingReport initialReport={initialAnalysisReport} />
 
-      <SurfaceCard className="p-7">
+      <section className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
+        <SurfaceCard className="p-5">
         <SectionHeader
           actions={
             <>
@@ -722,7 +729,7 @@ export function DataExplorer({ userEmail, metrics, activities, initialAnalysisRe
           title="恢复总览"
         />
 
-        <div className="mt-6 grid gap-6 xl:grid-cols-[1.25fr_0.75fr]">
+        <div className="mt-4 grid gap-4">
           <StackedColumnChart
             data={sleepCompositionData.map((item) => ({
               label: item.label,
@@ -744,16 +751,16 @@ export function DataExplorer({ userEmail, metrics, activities, initialAnalysisRe
             unit="hours"
           />
 
-          <SubtleCard className="p-6">
+          <SubtleCard className="p-4">
             <h3 className="text-xl font-semibold text-white">恢复信号</h3>
             <p className="mt-2 text-sm leading-6 text-slate-400">重点只看睡眠、HRV、训练准备度和电量振幅是否同步走强。</p>
-            <div className="mt-6 grid gap-4">
+            <div className="mt-4 grid gap-3">
               <VitalSignalRow label="睡眠时长" averageValue={sleepAverage} current={toSleepHours(recentMetrics[recentMetrics.length - 1]?.sleepDurationHours)} suffix="h" tone="cyan" />
               <VitalSignalRow label="HRV" averageValue={hrvAverage} current={recentMetrics[recentMetrics.length - 1]?.hrv} suffix="ms" tone="violet" />
               <VitalSignalRow label="训练准备度" averageValue={readinessAverage} current={recentMetrics[recentMetrics.length - 1]?.trainingReadiness} suffix="" tone="emerald" />
               <VitalSignalRow label="Body Battery 振幅" averageValue={bodyBatteryRangeAverage} current={recentMetrics[recentMetrics.length - 1]?.bodyBatteryHigh != null && recentMetrics[recentMetrics.length - 1]?.bodyBatteryLow != null ? recentMetrics[recentMetrics.length - 1]!.bodyBatteryHigh! - recentMetrics[recentMetrics.length - 1]!.bodyBatteryLow! : null} suffix="" tone="amber" />
             </div>
-            <div className="mt-6 grid gap-4 md:grid-cols-2">
+            <div className="mt-4 grid gap-3 md:grid-cols-2">
               <MetricTile
                 detail={`较前 7 天 ${formatDelta(average(last7Metrics.map((metric) => metric.sleepScore)), average(previous7Metrics.map((metric) => metric.sleepScore)))}`}
                 label="近 7 天睡眠评分"
@@ -769,28 +776,30 @@ export function DataExplorer({ userEmail, metrics, activities, initialAnalysisRe
         </div>
       </SurfaceCard>
 
-      <section className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
-        <SurfaceCard className="p-7">
+        <div className="grid gap-4">
+        <SurfaceCard className="p-5">
           <SectionHeader description="用高低点区间看全天 Body Battery 振幅，比两条独立折线更接近真实恢复体验。" eyebrow="Energy Window" title="能量与压力" />
-          <div className="mt-6">
+          <div className="mt-4">
             <RangeColumnChart data={bodyBatteryRangeData} description="每天一根区间柱，顶部是高点，底部是低点，中间的振幅代表白天消耗与夜间回充。" title="Body Battery 高低点" />
           </div>
         </SurfaceCard>
 
-        <SurfaceCard className="p-7">
+        <SurfaceCard className="p-5">
           <SectionHeader description="把心率、压力、血氧和呼吸都改成信号条，快速判断今天是否偏离常态。" eyebrow="Vitals" title="生命体征速览" />
-          <div className="mt-6 grid gap-4">
+          <div className="mt-4 grid gap-3">
             <VitalSignalRow averageValue={restingHrAverage} current={recentMetrics[recentMetrics.length - 1]?.restingHr} invert label="静息心率" suffix="bpm" tone="amber" />
             <VitalSignalRow averageValue={stressAverage} current={recentMetrics[recentMetrics.length - 1]?.stress} invert label="压力" suffix="" tone="amber" />
             <VitalSignalRow averageValue={spo2Average} current={recentMetrics[recentMetrics.length - 1]?.bloodOxygen} label="血氧" suffix="%" tone="emerald" />
             <VitalSignalRow averageValue={respirationAverage} current={recentMetrics[recentMetrics.length - 1]?.respiration} invert label="呼吸频率" suffix="brpm" tone="violet" />
           </div>
         </SurfaceCard>
+        </div>
       </section>
 
-      <SurfaceCard className="p-7">
+      <section className="grid gap-4 xl:grid-cols-[1.08fr_0.92fr]">
+      <SurfaceCard className="p-5">
         <SectionHeader description="把训练量、训练结构和负荷趋势拆成不同图形，各自回答不同的问题。" eyebrow="Training Load" title="训练负荷" />
-        <div className="mt-6 grid gap-6 xl:grid-cols-2">
+        <div className="mt-4 grid gap-4">
           <StackedColumnChart
             data={intensityData}
             description="改成中高强度堆叠柱，先看总量，再看结构。"
@@ -810,7 +819,11 @@ export function DataExplorer({ userEmail, metrics, activities, initialAnalysisRe
             title="急慢性负荷"
           />
         </div>
-        <div className="mt-6">
+      </SurfaceCard>
+
+      <SurfaceCard className="p-5">
+        <SectionHeader description="把负荷拆成低有氧、高有氧和无氧，快速看训练结构有没有失衡。" eyebrow="Load Mix" title="训练结构" />
+        <div className="mt-4">
           <StackedColumnChart
             data={loadCompositionData}
             description="低有氧、高有氧、无氧并排在一张图里，直接看训练负荷有没有偏科。"
@@ -824,11 +837,13 @@ export function DataExplorer({ userEmail, metrics, activities, initialAnalysisRe
           />
         </div>
       </SurfaceCard>
+      </section>
 
-      <SurfaceCard className="p-7">
+      <section className="grid gap-4 xl:grid-cols-[1.12fr_0.88fr]">
+      <SurfaceCard className="p-5">
         <SectionHeader description="选中某一天后，把当日指标和分时曲线收进一个工作台。只有这里保留分时序列。 " eyebrow="Daily Workbench" title="单日深潜" />
 
-        <div className="mt-6 flex flex-wrap gap-2">
+        <div className="mt-4 flex flex-wrap gap-2">
           {enrichedMetrics.slice(0, 14).map((metric) => (
             <button
               className={`rounded-full px-4 py-2 text-sm transition ${
@@ -845,7 +860,7 @@ export function DataExplorer({ userEmail, metrics, activities, initialAnalysisRe
 
         {selectedMetric ? (
           <>
-            <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-6">
+            <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
               <MetricTile detail="恢复质量" label="睡眠评分" value={formatNumber(selectedMetric.sleepScore)} />
               <MetricTile detail="自主神经恢复" label="HRV" value={formatNumber(selectedMetric.hrv, 0, " ms")} />
               <MetricTile detail="训练 readiness 信号" label="训练准备度" value={formatNumber(selectedMetric.trainingReadiness)} />
@@ -854,7 +869,7 @@ export function DataExplorer({ userEmail, metrics, activities, initialAnalysisRe
               <MetricTile detail="当天低点" label="Body Battery 低点" value={formatNumber(selectedMetric.bodyBatteryLow)} />
             </div>
 
-            <div className="mt-6 flex flex-wrap gap-2">
+            <div className="mt-4 flex flex-wrap gap-2">
               {[
                 { key: "heartRate", label: "心率折线" },
                 { key: "stress", label: "压力时间柱" },
@@ -874,7 +889,7 @@ export function DataExplorer({ userEmail, metrics, activities, initialAnalysisRe
               <div className="rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-sm text-slate-300">{userEmail}</div>
             </div>
 
-            <div className="mt-4">
+            <div className="mt-3">
               <TimeSeriesChart
                 color={selectedSeriesConfig.color}
                 data={selectedSeriesConfig.data}
@@ -892,9 +907,9 @@ export function DataExplorer({ userEmail, metrics, activities, initialAnalysisRe
         )}
       </SurfaceCard>
 
-      <SurfaceCard className="p-7">
+      <SurfaceCard className="p-5">
         <SectionHeader description="这里是快速排查区。字段总览优先展示解析后的所有已知指标，底部保留原始 JSON 兜底。 " eyebrow="Field Center" title="字段与验证中心" />
-        <div className="mt-6 flex flex-wrap gap-2">
+        <div className="mt-4 flex flex-wrap gap-2">
           {[
             { key: "fields", label: "字段总览" },
             { key: "activities", label: "活动记录" },
@@ -915,7 +930,7 @@ export function DataExplorer({ userEmail, metrics, activities, initialAnalysisRe
 
         {validationTab === "fields" ? (
           <>
-            <div className="mt-6 grid gap-4 lg:grid-cols-[0.7fr_0.3fr]">
+            <div className="mt-4 grid gap-3 lg:grid-cols-[0.7fr_0.3fr]">
               <input
                 className="w-full rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-white outline-none placeholder:text-slate-500 focus:border-cyan-400/60"
                 onChange={(event) => setFieldSearch(event.target.value)}
@@ -926,7 +941,7 @@ export function DataExplorer({ userEmail, metrics, activities, initialAnalysisRe
               <div className="rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-slate-300">当前日期 {selectedMetric?.date ?? "--"}</div>
             </div>
 
-            <div className="mt-4 flex flex-wrap gap-2">
+            <div className="mt-3 flex flex-wrap gap-2">
               {FIELD_GROUP_OPTIONS.map((option) => (
                 <button
                   className={`rounded-full px-4 py-2 text-sm transition ${
@@ -941,9 +956,9 @@ export function DataExplorer({ userEmail, metrics, activities, initialAnalysisRe
               ))}
             </div>
 
-            <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
               {filteredFields.map((field) => (
-                <SubtleCard className="p-5" key={field.key}>
+                <SubtleCard className="p-4" key={field.key}>
                   <div className="text-sm text-slate-400">{field.label}</div>
                   <div className="mt-3 text-2xl font-semibold tracking-tight text-white">{field.value}</div>
                   <div className="mt-2 text-xs uppercase tracking-[0.18em] text-slate-500">{field.group}</div>
@@ -951,9 +966,9 @@ export function DataExplorer({ userEmail, metrics, activities, initialAnalysisRe
               ))}
             </div>
 
-            {filteredFields.length === 0 ? <div className="mt-6 rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-6 text-center text-sm text-slate-400">没有命中字段。</div> : null}
+            {filteredFields.length === 0 ? <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-6 text-center text-sm text-slate-400">没有命中字段。</div> : null}
 
-            <div className="mt-6 rounded-[1.35rem] border border-white/8 bg-white/[0.035] p-5">
+            <div className="mt-4 rounded-[1.35rem] border border-white/8 bg-white/[0.035] p-4">
               <div className="flex items-center justify-between gap-3">
                 <div className="text-sm font-medium text-white">原始顶层字段</div>
                 <AccentPill tone="neutral">{topLevelKeys.length} keys</AccentPill>
@@ -974,7 +989,7 @@ export function DataExplorer({ userEmail, metrics, activities, initialAnalysisRe
         ) : null}
 
         {validationTab === "activities" ? (
-          <div className="mt-6 overflow-hidden rounded-3xl border border-white/10">
+          <div className="mt-4 overflow-hidden rounded-3xl border border-white/10">
             <div className="grid grid-cols-[1.4fr_0.8fr_0.8fr_1fr] bg-white/[0.04] px-5 py-3 text-xs uppercase tracking-[0.2em] text-slate-500">
               <span>活动</span>
               <span>距离</span>
@@ -1000,7 +1015,7 @@ export function DataExplorer({ userEmail, metrics, activities, initialAnalysisRe
         ) : null}
 
         {validationTab === "raw" ? (
-          <div className="mt-6 rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+          <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.04] p-4">
             <div className="text-xs text-slate-400">
               顶层字段数：{topLevelKeys.length}
               {topLevelKeys.length > 0 ? `（${topLevelKeys.slice(0, 16).join(", ")}${topLevelKeys.length > 16 ? ", ..." : ""}）` : ""}
@@ -1011,6 +1026,7 @@ export function DataExplorer({ userEmail, metrics, activities, initialAnalysisRe
           </div>
         ) : null}
       </SurfaceCard>
+      </section>
     </>
   )
 }
