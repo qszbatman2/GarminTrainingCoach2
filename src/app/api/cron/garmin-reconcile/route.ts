@@ -2,10 +2,12 @@ import { NextResponse } from "next/server"
 
 import { processBackfillJob } from "@/lib/backfill-jobs"
 import prisma from "@/lib/prisma"
-import { getDateKey, syncGarminDateForUser } from "@/lib/garmin-sync"
+import { GarminSyncMode, getDateKey, syncGarminDateForUser } from "@/lib/garmin-sync"
 
-function getYesterdayInShanghai() {
-  const date = new Date(Date.now() - 24 * 60 * 60 * 1000)
+export const dynamic = "force-dynamic"
+
+function formatShanghaiDate(offsetDays = 0) {
+  const date = new Date(Date.now() + offsetDays * 24 * 60 * 60 * 1000)
   const formatter = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Shanghai",
     year: "numeric",
@@ -14,6 +16,14 @@ function getYesterdayInShanghai() {
   })
 
   return formatter.format(date)
+}
+
+function getYesterdayInShanghai() {
+  return formatShanghaiDate(-1)
+}
+
+function getTodayInShanghai() {
+  return formatShanghaiDate(0)
 }
 
 function isAuthorized(request: Request) {
@@ -31,7 +41,10 @@ export async function GET(request: Request) {
   }
 
   try {
-    const targetDate = getYesterdayInShanghai()
+    const syncTargets: Array<{ date: string; mode: GarminSyncMode }> = [
+      { date: getYesterdayInShanghai(), mode: "full" },
+      { date: getTodayInShanghai(), mode: "partial_today" },
+    ]
     const users = await prisma.user.findMany({
       where: {
         garminEmail: { not: null },
@@ -59,24 +72,28 @@ export async function GET(request: Request) {
       },
     })
 
-    const results: Array<{ email: string; date: string; success: boolean; error?: string }> = []
+    const results: Array<{ email: string; date: string; mode: GarminSyncMode; success: boolean; error?: string }> = []
     for (const user of users) {
-      try {
-        await syncGarminDateForUser({
-          userId: user.id,
-          garminEmail: user.garminEmail ?? "",
-          garminPassword: user.garminPassword ?? "",
-          date: getDateKey(targetDate),
-        })
+      for (const target of syncTargets) {
+        try {
+          await syncGarminDateForUser({
+            userId: user.id,
+            garminEmail: user.garminEmail ?? "",
+            garminPassword: user.garminPassword ?? "",
+            date: getDateKey(target.date),
+            mode: target.mode,
+          })
 
-        results.push({ email: user.email, date: targetDate, success: true })
-      } catch (error: unknown) {
-        results.push({
-          email: user.email,
-          date: targetDate,
-          success: false,
-          error: error instanceof Error ? error.message : "同步失败",
-        })
+          results.push({ email: user.email, date: target.date, mode: target.mode, success: true })
+        } catch (error: unknown) {
+          results.push({
+            email: user.email,
+            date: target.date,
+            mode: target.mode,
+            success: false,
+            error: error instanceof Error ? error.message : "同步失败",
+          })
+        }
       }
     }
 
@@ -96,7 +113,7 @@ export async function GET(request: Request) {
 
     return NextResponse.json({
       success: true,
-      targetDate,
+      syncTargets,
       usersCount: users.length,
       successCount: results.filter((item) => item.success).length,
       failureCount: results.filter((item) => !item.success).length,

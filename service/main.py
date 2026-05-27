@@ -38,6 +38,7 @@ class SyncRequest(BaseModel):
     email: str
     password: str
     date: str  # Format: YYYY-MM-DD
+    mode: str = "full"
 
 @app.post("/api/garmin/sync")
 def sync_garmin_data(req: SyncRequest):
@@ -53,6 +54,7 @@ def sync_garmin_data(req: SyncRequest):
         
         date_obj = datetime.datetime.strptime(req.date, "%Y-%m-%d").date()
         date_iso = date_obj.isoformat()
+        sync_mode = "partial_today" if req.mode == "partial_today" else "full"
         
         # Helper function to fetch data safely
         def safe_fetch(fetch_func, *args, **kwargs):
@@ -68,55 +70,60 @@ def sync_garmin_data(req: SyncRequest):
         def safe_connectapi(path: str):
             return safe_fetch(getattr(client, "connectapi", None), path)
 
-        # Fetch comprehensive daily data safely
-        stats = safe_fetch(client.get_stats, date_iso)  # Daily summary
+        # Today's partial sync must avoid volatile fields. Otherwise the TS layer's
+        # "fill gaps only" merge strategy may keep half-finished daily values forever.
+        stats = safe_fetch(client.get_stats, date_iso) if sync_mode == "full" else None
         sleep = safe_fetch(client.get_sleep_data, date_iso)  # Sleep detail
         hrv = safe_fetch(client.get_hrv_data, date_iso)  # HRV detail
-        body_battery = safe_fetch(client.get_body_battery, date_iso, date_iso)  # Body battery (range)
+        body_battery = safe_fetch(client.get_body_battery, date_iso, date_iso) if sync_mode == "full" else None
         body_composition = safe_fetch(getattr(client, "get_body_composition", lambda *_: None), date_iso, date_iso)
-        blood_oxygen = safe_fetch(client.get_spo2_data, date_iso) # Blood oxygen
-        training_status = safe_fetch(getattr(client, "get_training_status", lambda *_: None), date_iso)  # May not exist in some versions
-        training_status_aggregated = safe_connectapi(f"/metrics-service/metrics/trainingstatus/aggregated/{date_iso}")
+        blood_oxygen = safe_fetch(client.get_spo2_data, date_iso)
+        training_status = (
+            safe_fetch(getattr(client, "get_training_status", lambda *_: None), date_iso) if sync_mode == "full" else None
+        )
+        training_status_aggregated = (
+            safe_connectapi(f"/metrics-service/metrics/trainingstatus/aggregated/{date_iso}") if sync_mode == "full" else None
+        )
 
-        # Additional daily health + training metrics (best-effort)
-        stress_data = safe_fetch(client.get_stress_data, date_iso)
-        heart_rates = safe_fetch(client.get_heart_rates, date_iso)
+        stress_data = safe_fetch(client.get_stress_data, date_iso) if sync_mode == "full" else None
+        heart_rates = safe_fetch(client.get_heart_rates, date_iso) if sync_mode == "full" else None
         respiration = safe_fetch(client.get_respiration_data, date_iso)
-        steps_data = safe_fetch(client.get_steps_data, date_iso)
-        daily_steps = safe_fetch(client.get_daily_steps, date_iso, date_iso)
-        intensity_minutes = safe_fetch(client.get_intensity_minutes_data, date_iso)
-        floors = safe_fetch(client.get_floors, date_iso)
-        max_metrics = safe_fetch(client.get_max_metrics, date_iso)
+        steps_data = safe_fetch(client.get_steps_data, date_iso) if sync_mode == "full" else None
+        daily_steps = safe_fetch(client.get_daily_steps, date_iso, date_iso) if sync_mode == "full" else None
+        intensity_minutes = safe_fetch(client.get_intensity_minutes_data, date_iso) if sync_mode == "full" else None
+        floors = safe_fetch(client.get_floors, date_iso) if sync_mode == "full" else None
+        max_metrics = safe_fetch(client.get_max_metrics, date_iso) if sync_mode == "full" else None
         training_readiness = safe_fetch(client.get_training_readiness, date_iso)
         morning_training_readiness = safe_fetch(client.get_morning_training_readiness, date_iso)
-        endurance_score = safe_fetch(client.get_endurance_score, date_iso, date_iso)
-        hill_score = safe_fetch(client.get_hill_score, date_iso, date_iso)
-        running_tolerance = safe_fetch(client.get_running_tolerance, date_iso, date_iso)
-        user_profile = safe_connectapi("/userprofile-service/userprofile/settings")
-        lactate_threshold = safe_fetch(getattr(client, "get_lactate_threshold", None))
-        if lactate_threshold is None:
+        endurance_score = safe_fetch(client.get_endurance_score, date_iso, date_iso) if sync_mode == "full" else None
+        hill_score = safe_fetch(client.get_hill_score, date_iso, date_iso) if sync_mode == "full" else None
+        running_tolerance = safe_fetch(client.get_running_tolerance, date_iso, date_iso) if sync_mode == "full" else None
+        user_profile = safe_connectapi("/userprofile-service/userprofile/settings") if sync_mode == "full" else None
+        lactate_threshold = safe_fetch(getattr(client, "get_lactate_threshold", None)) if sync_mode == "full" else None
+        if sync_mode == "full" and lactate_threshold is None:
             lactate_threshold = safe_connectapi("/biometric-service/biometric/latestLactateThreshold")
-        
-        # Fetch activities for the day safely
-        activities = safe_fetch(client.get_activities_by_date, date_iso, date_iso)
-        if activities is None:
-            activities = []
 
-        # Enrich each activity with details (best-effort). Usually there are only a few per day.
+        activities = []
         enriched = []
-        for act in activities:
-            try:
-                activity_id = str(act.get("activityId"))
-            except Exception:
-                activity_id = ""
+        if sync_mode == "full":
+            activities = safe_fetch(client.get_activities_by_date, date_iso, date_iso)
+            if activities is None:
+                activities = []
 
-            if activity_id:
-                act["details"] = safe_fetch(client.get_activity_details, activity_id)
-                act["splits"] = safe_fetch(client.get_activity_splits, activity_id)
-                act["split_summaries"] = safe_fetch(client.get_activity_split_summaries, activity_id)
-                act["hr_in_timezones"] = safe_fetch(client.get_activity_hr_in_timezones, activity_id)
+            # Enrich each activity with details (best-effort). Usually there are only a few per day.
+            for act in activities:
+                try:
+                    activity_id = str(act.get("activityId"))
+                except Exception:
+                    activity_id = ""
 
-            enriched.append(act)
+                if activity_id:
+                    act["details"] = safe_fetch(client.get_activity_details, activity_id)
+                    act["splits"] = safe_fetch(client.get_activity_splits, activity_id)
+                    act["split_summaries"] = safe_fetch(client.get_activity_split_summaries, activity_id)
+                    act["hr_in_timezones"] = safe_fetch(client.get_activity_hr_in_timezones, activity_id)
+
+                enriched.append(act)
         
         return {
             "status": "success",

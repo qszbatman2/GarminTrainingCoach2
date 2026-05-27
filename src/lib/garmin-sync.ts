@@ -7,11 +7,14 @@ type GarminPayload = {
   activities?: Array<Record<string, unknown>>
 }
 
+export type GarminSyncMode = "full" | "partial_today"
+
 type SyncUserInput = {
   userId: string
   garminEmail: string
   garminPassword: string
   date: string
+  mode?: GarminSyncMode
 }
 
 type SyncResult = {
@@ -299,7 +302,12 @@ export function getMetricSummary(raw: unknown) {
   }
 }
 
-export async function fetchGarminPayload(garminEmail: string, garminPassword: string, date: string): Promise<GarminPayload> {
+export async function fetchGarminPayload(
+  garminEmail: string,
+  garminPassword: string,
+  date: string,
+  mode: GarminSyncMode = "full"
+): Promise<GarminPayload> {
   const pythonServiceUrl = process.env.GARMIN_SERVICE_URL || "http://127.0.0.1:8000"
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), GARMIN_FETCH_TIMEOUT_MS)
@@ -309,7 +317,7 @@ export async function fetchGarminPayload(garminEmail: string, garminPassword: st
     garminRes = await fetch(`${pythonServiceUrl}/api/garmin/sync`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email: garminEmail, password: garminPassword, date }),
+      body: JSON.stringify({ email: garminEmail, password: garminPassword, date, mode }),
       signal: controller.signal,
     })
   } catch (error: unknown) {
@@ -332,7 +340,13 @@ export async function fetchGarminPayload(garminEmail: string, garminPassword: st
   return payload.data ?? {}
 }
 
-export async function syncGarminDateForUser({ userId, garminEmail, garminPassword, date }: SyncUserInput): Promise<SyncResult> {
+export async function syncGarminDateForUser({
+  userId,
+  garminEmail,
+  garminPassword,
+  date,
+  mode = "full",
+}: SyncUserInput): Promise<SyncResult> {
   const existingMetric = await prisma.dailyMetric.findUnique({
     where: {
       userId_date: {
@@ -351,7 +365,7 @@ export async function syncGarminDateForUser({ userId, garminEmail, garminPasswor
     },
   })
 
-  const data = await fetchGarminPayload(garminEmail, garminPassword, date)
+  const data = await fetchGarminPayload(garminEmail, garminPassword, date, mode)
   const remoteMetrics = asRecord(data.daily_metrics) ?? {}
   const metricUpdatedFields = collectUpdatedMetricLabels(existingMetric?.raw, remoteMetrics)
   const activities = Array.isArray(data.activities) ? data.activities : []
