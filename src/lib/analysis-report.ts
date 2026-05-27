@@ -14,7 +14,7 @@ import {
 } from "@/lib/training-analysis"
 
 const REPORT_TYPE = "latest"
-const ANALYSIS_VERSION = "training-rule-v5-weekly-load"
+const ANALYSIS_VERSION = "training-rule-v7-weekly-progress"
 
 function normalizeJson<T>(value: unknown) {
   return JSON.parse(JSON.stringify(value)) as T
@@ -42,11 +42,16 @@ function serializeActivities(activities: ActivityInput[]) {
   }))
 }
 
-export function computeAnalysisInputHash(metrics: DailyMetricInput[], activities: ActivityInput[]) {
+function normalizeTrainingGoal(trainingGoal?: string | null) {
+  return String(trainingGoal ?? "").trim()
+}
+
+export function computeAnalysisInputHash(metrics: DailyMetricInput[], activities: ActivityInput[], trainingGoal?: string | null) {
   return createHash("sha256")
     .update(
       JSON.stringify({
         version: ANALYSIS_VERSION,
+        trainingGoal: normalizeTrainingGoal(trainingGoal),
         metrics: serializeMetrics(metrics),
         activities: serializeActivities(activities),
       })
@@ -54,9 +59,14 @@ export function computeAnalysisInputHash(metrics: DailyMetricInput[], activities
     .digest("hex")
 }
 
-async function generateAnalysisPayload(metrics: DailyMetricInput[], activities: ActivityInput[]) {
+async function generateAnalysisPayload(metrics: DailyMetricInput[], activities: ActivityInput[], trainingGoal?: string | null) {
   const context = buildTrainingContext(metrics, activities)
-  const content = await createArkJsonCompletion(buildTrainingAnalysisMessages(context))
+  const content = await createArkJsonCompletion(
+    buildTrainingAnalysisMessages({
+      context,
+      trainingGoal: normalizeTrainingGoal(trainingGoal),
+    })
+  )
 
   return {
     context,
@@ -104,12 +114,13 @@ export async function getLatestSavedAnalysisReport(userId: string) {
 
 export async function getOrCreateLatestAnalysisReport(options: {
   userId: string
+  trainingGoal?: string | null
   metrics: DailyMetricInput[]
   activities: ActivityInput[]
   forceRefresh?: boolean
 }) {
-  const { userId, metrics, activities, forceRefresh = false } = options
-  const inputHash = computeAnalysisInputHash(metrics, activities)
+  const { userId, trainingGoal, metrics, activities, forceRefresh = false } = options
+  const inputHash = computeAnalysisInputHash(metrics, activities, trainingGoal)
   const saved = await getLatestSavedAnalysisReport(userId)
 
   if (!forceRefresh && saved && saved.inputHash === inputHash) {
@@ -120,7 +131,7 @@ export async function getOrCreateLatestAnalysisReport(options: {
     }
   }
 
-  const payload = await generateAnalysisPayload(metrics, activities)
+  const payload = await generateAnalysisPayload(metrics, activities, trainingGoal)
   const report = await prisma.analysisReport.upsert({
     where: {
       userId_reportType: {

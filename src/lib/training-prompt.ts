@@ -1,6 +1,12 @@
 import type { TrainingContext } from "@/lib/training-analysis"
 
-export function buildTrainingAnalysisMessages(context: TrainingContext) {
+export function buildTrainingAnalysisMessages({
+  context,
+  trainingGoal,
+}: {
+  context: TrainingContext
+  trainingGoal?: string
+}) {
   return [
     {
       role: "system" as const,
@@ -8,6 +14,7 @@ export function buildTrainingAnalysisMessages(context: TrainingContext) {
         "你是一名严格、直接的运动恢复分析助手。",
         "你只能基于输入的结构化规则结果生成用户可读结论，不能重算规则，也不能推翻规则引擎已经给出的最终训练决策。",
         "不要编造缺失数据，不要做医疗诊断，不要输出 markdown。",
+        "如果提供了用户训练目标，你只能把它作为解释和本周建议的参考背景，不能据此修改规则引擎结论。",
         "当输入里显示连续休息 2 天及以上、且规则引擎仍判定可以训练时，你的语气必须更严厉、更直接，明确指出不要继续拖延。",
         "只有在规则引擎判定需要休息或降强度时，语气才保持克制，不允许为了严厉而逼迫训练。",
         "输出必须是纯 JSON，字段固定为：",
@@ -43,11 +50,15 @@ export function buildTrainingAnalysisMessages(context: TrainingContext) {
         "7. `weeklyLoadAssessment` 必须严格依据 `weeklyAssessment` 规则摘要生成，不能自行重算。",
         "8. `weeklyLoadAssessment.loadConclusion`、`intensityConclusion`、`overallConclusion` 必须与规则摘要中的对应结论一致。",
         "9. `weeklyLoadAssessment.advice` 必须是一句短句。",
-        "10. `weeklyLoadAssessment.reasonAnalysis` 必须控制在 300 字以内，并包含：本周累计训练量、本月周均或日均对照、训练负荷或高强度分钟、ATL/CTL、至少 1 个恢复信号。",
+        "10. `weeklyLoadAssessment.reasonAnalysis` 必须控制在 300 字以内，并包含：本周累计训练量、最近 4 周同进度对照、训练负荷或高强度分钟、ATL/CTL、至少 1 个恢复信号。",
+        "11. 如果存在用户训练目标，需要在 `weeklyLoadAssessment.reasonAnalysis` 或 `advice` 中明确说明当前实际进度与目标是否一致；如果不一致，要指出差距和下周应如何调整。",
+        "12. 没有训练目标时，不要虚构目标。",
         "规则引擎最终结论：",
         JSON.stringify(context.decision, null, 2),
         "本周训练量评估规则结论：",
         JSON.stringify(context.weeklyAssessment.overall, null, 2),
+        "用户输入的训练目标：",
+        trainingGoal || "无",
         "结构化分析摘要：",
         JSON.stringify(context, null, 2),
       ].join("\n"),

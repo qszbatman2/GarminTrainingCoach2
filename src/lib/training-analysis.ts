@@ -72,10 +72,12 @@ type MetricAbnormality = {
 
 type PeriodComparison = {
   actual: number | null
+  recent4WeekSameProgressAverage: number | null
   expectedToDate: number | null
   projectedWeekTotal: number | null
   monthWeeklyAverage: number | null
-  paceRatio: number | null
+  sameProgressRatio: number | null
+  weeklyAverageRatio: number | null
 }
 
 export type TrainingContext = {
@@ -684,10 +686,68 @@ function buildPeriodComparison(actual: number | null, monthTotal: number | null,
 
   return {
     actual: round(actual, 1),
+    recent4WeekSameProgressAverage: null,
     expectedToDate: round(expectedToDate, 1),
     projectedWeekTotal: round(projectedWeekTotal, 1),
     monthWeeklyAverage: round(monthWeeklyAverage, 1),
-    paceRatio: ratio(projectedWeekTotal, monthWeeklyAverage, 2),
+    sameProgressRatio: null,
+    weeklyAverageRatio: ratio(projectedWeekTotal, monthWeeklyAverage, 2),
+  }
+}
+
+function getRecentComparableWeekStarts(referenceDate: Date, lookbackWeeks = 4) {
+  const currentWeekStart = startOfWeek(referenceDate)
+  return Array.from({ length: lookbackWeeks }, (_, index) => {
+    const value = new Date(currentWeekStart)
+    value.setDate(value.getDate() - (index + 1) * 7)
+    return value
+  })
+}
+
+function sumRangeByWeeks<T>(items: T[], getValue: (item: T) => number | null | undefined) {
+  const total = sum(items.map(getValue))
+  return total == null ? null : Number(total)
+}
+
+function buildSameProgressComparison<T extends { date: Date }>(options: {
+  currentItems: T[]
+  allItems: T[]
+  referenceDate: Date
+  weekElapsedDays: number
+  getValue: (item: T) => number | null | undefined
+}) {
+  const { currentItems, allItems, referenceDate, weekElapsedDays, getValue } = options
+  const currentTotal = sumRangeByWeeks(currentItems, getValue)
+  const comparableWeekStarts = getRecentComparableWeekStarts(referenceDate, 4)
+  const weekTotals = comparableWeekStarts
+    .map((weekStart) => {
+      const weekEnd = new Date(weekStart)
+      weekEnd.setDate(weekEnd.getDate() + weekElapsedDays - 1)
+      const rangeItems = getRangeItems(allItems, weekStart, weekEnd)
+      return sumRangeByWeeks(rangeItems, getValue)
+    })
+    .filter((value): value is number => typeof value === "number" && Number.isFinite(value))
+
+  return {
+    currentTotal,
+    sameProgressAverage: weekTotals.length > 0 ? average(weekTotals) : null,
+  }
+}
+
+function buildWeeklyProgressComparison(options: {
+  actual: number | null
+  monthTotal: number | null
+  weekElapsedDays: number
+  monthElapsedDays: number
+  sameProgressAverage: number | null
+}): PeriodComparison {
+  const { actual, monthTotal, weekElapsedDays, monthElapsedDays, sameProgressAverage } = options
+  const base = buildPeriodComparison(actual, monthTotal, weekElapsedDays, monthElapsedDays)
+
+  return {
+    ...base,
+    recent4WeekSameProgressAverage: round(sameProgressAverage, 1),
+    sameProgressRatio: ratio(actual, sameProgressAverage, 2),
   }
 }
 
@@ -763,25 +823,104 @@ function buildWeeklyAssessment(options: {
   const weekAvgAnaerobicEffect = average(weekActivities.map((activity) => activity.anaerobicTrainingEffect))
   const monthAvgAnaerobicEffect = average(monthActivities.map((activity) => activity.anaerobicTrainingEffect))
 
+  const durationProgress = buildSameProgressComparison({
+    currentItems: weekActivities,
+    allItems: activities,
+    referenceDate,
+    weekElapsedDays,
+    getValue: (activity) => activity.durationMin,
+  })
+  const distanceProgress = buildSameProgressComparison({
+    currentItems: weekActivities,
+    allItems: activities,
+    referenceDate,
+    weekElapsedDays,
+    getValue: (activity) => activity.distanceKm,
+  })
+  const sessionProgress = buildSameProgressComparison({
+    currentItems: weekActivities,
+    allItems: activities,
+    referenceDate,
+    weekElapsedDays,
+    getValue: () => 1,
+  })
+  const trainingLoadProgress = buildSameProgressComparison({
+    currentItems: weekActivities,
+    allItems: activities,
+    referenceDate,
+    weekElapsedDays,
+    getValue: (activity) => activity.trainingLoad,
+  })
+  const intensityMinutesProgress = buildSameProgressComparison({
+    currentItems: weekMetrics,
+    allItems: metrics,
+    referenceDate,
+    weekElapsedDays,
+    getValue: (metric) => metric.intensityMinutes,
+  })
+  const vigorousMinutesProgress = buildSameProgressComparison({
+    currentItems: weekMetrics,
+    allItems: metrics,
+    referenceDate,
+    weekElapsedDays,
+    getValue: (metric) => metric.vigorousIntensityMinutes,
+  })
+
   const loadFocus = getWeeklyLoadFocus(weekActivities.length > 0 ? weekActivities : monthActivities)
-  const durationComparison = buildPeriodComparison(weekDurationMin, monthDurationMin, weekElapsedDays, monthElapsedDays)
-  const distanceComparison = buildPeriodComparison(weekDistanceKm, monthDistanceKm, weekElapsedDays, monthElapsedDays)
-  const sessionsComparison = buildPeriodComparison(weekSessions, monthSessions, weekElapsedDays, monthElapsedDays)
-  const trainingLoadComparison = buildPeriodComparison(weekTrainingLoad, monthTrainingLoad, weekElapsedDays, monthElapsedDays)
-  const intensityMinutesComparison = buildPeriodComparison(weekIntensityMinutes, monthIntensityMinutes, weekElapsedDays, monthElapsedDays)
-  const vigorousMinutesComparison = buildPeriodComparison(weekVigorousMinutes, monthVigorousMinutes, weekElapsedDays, monthElapsedDays)
+  const durationComparison = buildWeeklyProgressComparison({
+    actual: weekDurationMin,
+    monthTotal: monthDurationMin,
+    weekElapsedDays,
+    monthElapsedDays,
+    sameProgressAverage: durationProgress.sameProgressAverage,
+  })
+  const distanceComparison = buildWeeklyProgressComparison({
+    actual: weekDistanceKm,
+    monthTotal: monthDistanceKm,
+    weekElapsedDays,
+    monthElapsedDays,
+    sameProgressAverage: distanceProgress.sameProgressAverage,
+  })
+  const sessionsComparison = buildWeeklyProgressComparison({
+    actual: weekSessions,
+    monthTotal: monthSessions,
+    weekElapsedDays,
+    monthElapsedDays,
+    sameProgressAverage: sessionProgress.sameProgressAverage,
+  })
+  const trainingLoadComparison = buildWeeklyProgressComparison({
+    actual: weekTrainingLoad,
+    monthTotal: monthTrainingLoad,
+    weekElapsedDays,
+    monthElapsedDays,
+    sameProgressAverage: trainingLoadProgress.sameProgressAverage,
+  })
+  const intensityMinutesComparison = buildWeeklyProgressComparison({
+    actual: weekIntensityMinutes,
+    monthTotal: monthIntensityMinutes,
+    weekElapsedDays,
+    monthElapsedDays,
+    sameProgressAverage: intensityMinutesProgress.sameProgressAverage,
+  })
+  const vigorousMinutesComparison = buildWeeklyProgressComparison({
+    actual: weekVigorousMinutes,
+    monthTotal: monthVigorousMinutes,
+    weekElapsedDays,
+    monthElapsedDays,
+    sameProgressAverage: vigorousMinutesProgress.sameProgressAverage,
+  })
 
   const loadScore = round(
     weightedAverage(
       loadFocus === "distance"
         ? {
-            duration: durationComparison.paceRatio,
-            distance: distanceComparison.paceRatio,
-            sessions: sessionsComparison.paceRatio,
+            duration: durationComparison.sameProgressRatio,
+            distance: distanceComparison.sameProgressRatio,
+            sessions: sessionsComparison.sameProgressRatio,
           }
         : {
-            duration: durationComparison.paceRatio,
-            sessions: sessionsComparison.paceRatio,
+            duration: durationComparison.sameProgressRatio,
+            sessions: sessionsComparison.sameProgressRatio,
           },
       loadFocus === "distance"
         ? { duration: 0.45, distance: 0.35, sessions: 0.2 }
@@ -790,8 +929,8 @@ function buildWeeklyAssessment(options: {
     2
   )
 
-  const hasFullIntensityFields = trainingLoadComparison.paceRatio != null && monthAvgAerobicEffect != null
-  const hasPartialIntensityFields = trainingLoadComparison.paceRatio != null
+  const hasFullIntensityFields = trainingLoadComparison.sameProgressRatio != null && monthAvgAerobicEffect != null
+  const hasPartialIntensityFields = trainingLoadComparison.sameProgressRatio != null
   const intensitySource: WeeklyIntensitySource = hasFullIntensityFields ? "full" : hasPartialIntensityFields ? "partial" : "minimal"
   const aerobicEffectRatio = ratio(weekAvgAerobicEffect, monthAvgAerobicEffect, 2)
   const anaerobicEffectRatio = ratio(weekAvgAnaerobicEffect, monthAvgAnaerobicEffect, 2)
@@ -799,20 +938,20 @@ function buildWeeklyAssessment(options: {
     weightedAverage(
       intensitySource === "full"
         ? {
-            trainingLoad: trainingLoadComparison.paceRatio,
+            trainingLoad: trainingLoadComparison.sameProgressRatio,
             aerobic: aerobicEffectRatio,
             anaerobic: anaerobicEffectRatio,
-            vigorous: vigorousMinutesComparison.paceRatio,
+            vigorous: vigorousMinutesComparison.sameProgressRatio,
           }
         : intensitySource === "partial"
           ? {
-              trainingLoad: trainingLoadComparison.paceRatio,
-              intensityMinutes: intensityMinutesComparison.paceRatio,
-              vigorous: vigorousMinutesComparison.paceRatio,
+              trainingLoad: trainingLoadComparison.sameProgressRatio,
+              intensityMinutes: intensityMinutesComparison.sameProgressRatio,
+              vigorous: vigorousMinutesComparison.sameProgressRatio,
             }
           : {
-              intensityMinutes: intensityMinutesComparison.paceRatio,
-              vigorous: vigorousMinutesComparison.paceRatio,
+              intensityMinutes: intensityMinutesComparison.sameProgressRatio,
+              vigorous: vigorousMinutesComparison.sameProgressRatio,
               loadRatio: loadRatio,
             },
       intensitySource === "full"
@@ -856,11 +995,11 @@ function buildWeeklyAssessment(options: {
     (loadRatio != null && loadRatio > 1.5) ||
     (loadConclusion === "过高" && intensityConclusion === "过高") ||
     ((intensityScore ?? 0) > 1.3 && (latestRecoveryHours ?? 0) >= 24) ||
-    ((vigorousMinutesComparison.paceRatio ?? 0) > 1.3 && recoverySignals.length >= 2)
+    ((vigorousMinutesComparison.sameProgressRatio ?? 0) > 1.3 && recoverySignals.length >= 2)
   ) {
     overallConclusion = "过度风险"
     advice = "本周负荷已经偏重，立即下调强度并优先恢复。"
-    ruleReason = "本周训练强度明显高于本月节奏，且恢复信号已出现恶化，继续堆量存在过度训练风险。"
+    ruleReason = "本周截至当前周进度的训练强度已经明显高于最近 4 周同进度水平，且恢复信号已出现恶化，继续堆量存在过度训练风险。"
   } else if (
     (loadConclusion === "不足" || loadConclusion === "偏低") &&
     (intensityConclusion === "不足" || intensityConclusion === "偏低") &&
@@ -869,8 +1008,8 @@ function buildWeeklyAssessment(options: {
     overallConclusion = "训练不足"
     advice = recoveryWeak ? "本周执行偏少，先修复恢复状态，再尽快回到正常训练频率。" : "本周训练明显偏少，接下来别再拖，尽快补回正常训练节奏。"
     ruleReason = recoveryWeak
-      ? "本周训练量和训练强度都低于本月节奏，但当前恢复信号也不理想，说明不能简单视为执行懈怠。"
-      : "本周训练量和训练强度都显著低于本月平均节奏，当前更像训练执行不足而不是恢复性减量。"
+      ? "本周截至当前周进度的训练量和训练强度都低于最近 4 周同进度水平，但当前恢复信号也不理想，说明不能简单视为执行懈怠。"
+      : "本周截至当前周进度的训练量和训练强度都显著低于最近 4 周同进度水平，当前更像训练执行不足而不是恢复性减量。"
   } else if (
     loadConclusion === "偏高" ||
     intensityConclusion === "偏高" ||
@@ -882,8 +1021,8 @@ function buildWeeklyAssessment(options: {
     overallConclusion = "训练偏多"
     advice = recoveryWeak ? "本周负荷已经偏重，后半周要主动控强度、保恢复。" : "本周训练略偏多，后续保持但别继续加码。"
     ruleReason = recoveryWeak
-      ? "本周训练量或训练强度已经偏高，同时恢复信号开始走弱，需要及时收住训练刺激。"
-      : "本周训练节奏略高于本月平均，但尚未进入明确过度风险区间。"
+      ? "本周截至当前周进度的训练量或训练强度已经偏高，同时恢复信号开始走弱，需要及时收住训练刺激。"
+      : "本周截至当前周进度的训练节奏略高于最近 4 周同进度水平，但尚未进入明确过度风险区间。"
   }
 
   return {
@@ -983,25 +1122,25 @@ function buildFallbackWeeklyAssessment(context: TrainingContext) {
   const parts: string[] = []
   const weekly = context.weeklyAssessment
   const durationActual = weekly.load.duration.actual
-  const durationWeekAvg = weekly.load.duration.monthWeeklyAverage
+  const durationSameProgress = weekly.load.duration.recent4WeekSameProgressAverage
   const distanceActual = weekly.load.distance.actual
-  const distanceWeekAvg = weekly.load.distance.monthWeeklyAverage
+  const distanceSameProgress = weekly.load.distance.recent4WeekSameProgressAverage
   const trainingLoadActual = weekly.intensity.trainingLoad.actual
-  const trainingLoadWeekAvg = weekly.intensity.trainingLoad.monthWeeklyAverage
+  const trainingLoadSameProgress = weekly.intensity.trainingLoad.recent4WeekSameProgressAverage
   const vigorousActual = weekly.intensity.vigorousIntensityMinutes.actual
-  const vigorousWeekAvg = weekly.intensity.vigorousIntensityMinutes.monthWeeklyAverage
+  const vigorousSameProgress = weekly.intensity.vigorousIntensityMinutes.recent4WeekSameProgressAverage
 
   parts.push(
     `本周一到今天累计训练 ${weekly.load.totals.sessions} 次${durationActual != null ? `、总时长 ${durationActual} 分钟` : ""}${distanceActual != null ? `、总距离 ${distanceActual}km` : ""}`
   )
-  if (durationWeekAvg != null || distanceWeekAvg != null) {
+  if (durationSameProgress != null || distanceSameProgress != null) {
     parts.push(
-      `按当前进度折算后${durationWeekAvg != null ? `，本周时长对应月周均 ${durationWeekAvg} 分钟` : ""}${distanceWeekAvg != null ? `${durationWeekAvg != null ? "，" : "，"}距离对应月周均 ${distanceWeekAvg}km` : ""}`
+      `对比最近 4 周同样周进度${durationSameProgress != null ? `，同进度平均时长约 ${durationSameProgress} 分钟` : ""}${distanceSameProgress != null ? `${durationSameProgress != null ? "，" : "，"}同进度平均距离约 ${distanceSameProgress}km` : ""}`
     )
   }
   if (trainingLoadActual != null || vigorousActual != null) {
     parts.push(
-      `训练强度方面${trainingLoadActual != null ? `，本周训练负荷 ${trainingLoadActual}` : ""}${trainingLoadWeekAvg != null ? `，月周均约 ${trainingLoadWeekAvg}` : ""}${vigorousActual != null ? `，高强度分钟 ${vigorousActual}` : ""}${vigorousWeekAvg != null ? `，月周均约 ${vigorousWeekAvg}` : ""}`
+      `训练强度方面${trainingLoadActual != null ? `，本周训练负荷 ${trainingLoadActual}` : ""}${trainingLoadSameProgress != null ? `，最近 4 周同进度平均约 ${trainingLoadSameProgress}` : ""}${vigorousActual != null ? `，高强度分钟 ${vigorousActual}` : ""}${vigorousSameProgress != null ? `，最近 4 周同进度平均约 ${vigorousSameProgress}` : ""}`
     )
   }
   if (context.load.loadRatio != null) {
@@ -1126,18 +1265,18 @@ export function buildTrainingContext(metrics: DailyMetricInput[], activities: Ac
         load: {
           focus: "duration",
           totals: { sessions: 0, durationMin: null, distanceKm: null },
-          duration: { actual: null, expectedToDate: null, projectedWeekTotal: null, monthWeeklyAverage: null, paceRatio: null },
-          distance: { actual: null, expectedToDate: null, projectedWeekTotal: null, monthWeeklyAverage: null, paceRatio: null },
-          sessions: { actual: null, expectedToDate: null, projectedWeekTotal: null, monthWeeklyAverage: null, paceRatio: null },
+          duration: { actual: null, recent4WeekSameProgressAverage: null, expectedToDate: null, projectedWeekTotal: null, monthWeeklyAverage: null, sameProgressRatio: null, weeklyAverageRatio: null },
+          distance: { actual: null, recent4WeekSameProgressAverage: null, expectedToDate: null, projectedWeekTotal: null, monthWeeklyAverage: null, sameProgressRatio: null, weeklyAverageRatio: null },
+          sessions: { actual: null, recent4WeekSameProgressAverage: null, expectedToDate: null, projectedWeekTotal: null, monthWeeklyAverage: null, sameProgressRatio: null, weeklyAverageRatio: null },
           score: null,
           conclusion: "未知",
         },
         intensity: {
           source: "minimal",
           totals: { trainingLoad: null, intensityMinutes: null, vigorousIntensityMinutes: null, avgAerobicEffect: null, avgAnaerobicEffect: null },
-          trainingLoad: { actual: null, expectedToDate: null, projectedWeekTotal: null, monthWeeklyAverage: null, paceRatio: null },
-          intensityMinutes: { actual: null, expectedToDate: null, projectedWeekTotal: null, monthWeeklyAverage: null, paceRatio: null },
-          vigorousIntensityMinutes: { actual: null, expectedToDate: null, projectedWeekTotal: null, monthWeeklyAverage: null, paceRatio: null },
+          trainingLoad: { actual: null, recent4WeekSameProgressAverage: null, expectedToDate: null, projectedWeekTotal: null, monthWeeklyAverage: null, sameProgressRatio: null, weeklyAverageRatio: null },
+          intensityMinutes: { actual: null, recent4WeekSameProgressAverage: null, expectedToDate: null, projectedWeekTotal: null, monthWeeklyAverage: null, sameProgressRatio: null, weeklyAverageRatio: null },
+          vigorousIntensityMinutes: { actual: null, recent4WeekSameProgressAverage: null, expectedToDate: null, projectedWeekTotal: null, monthWeeklyAverage: null, sameProgressRatio: null, weeklyAverageRatio: null },
           avgAerobicEffect: { actual: null, monthAverage: null, ratio: null },
           avgAnaerobicEffect: { actual: null, monthAverage: null, ratio: null },
           score: null,
