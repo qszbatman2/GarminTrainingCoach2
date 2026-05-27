@@ -563,6 +563,22 @@ export function getActivityDisplayValues(raw: unknown) {
       ],
       raw
     ),
+    moderateIntensityMinutes: firstNumber(
+      [
+        "summaryDTO.moderateIntensityMinutes",
+        "details.moderateIntensityMinutes",
+        "moderateIntensityMinutes",
+      ],
+      raw
+    ),
+    vigorousIntensityMinutes: firstNumber(
+      [
+        "summaryDTO.vigorousIntensityMinutes",
+        "details.vigorousIntensityMinutes",
+        "vigorousIntensityMinutes",
+      ],
+      raw
+    ),
     recoveryHours: firstNumber(
       [
         "summaryDTO.recoveryTime",

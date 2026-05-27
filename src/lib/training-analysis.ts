@@ -42,7 +42,6 @@ type EnrichedMetric = DailyMetricInput &
     remSleepHours: number | null
     awakeDurationMinutes: number | null
     sedentaryMinutes: number | null
-    recoveryHours: number | null
   }
 
 type EnrichedActivity = ActivityInput &
@@ -364,12 +363,37 @@ function normalizeMinutes(value: number | null) {
   return round(value > 1440 ? value / 60 : value, 0)
 }
 
-function normalizeRecoveryHours(value: number | null) {
-  if (value == null) {
+function estimateRecoveryHours(activity: {
+  durationMin: number | null
+  trainingLoad: number | null
+  aerobicTrainingEffect: number | null
+  anaerobicTrainingEffect: number | null
+  moderateIntensityMinutes: number | null
+  vigorousIntensityMinutes: number | null
+}) {
+  const { durationMin, trainingLoad, aerobicTrainingEffect, anaerobicTrainingEffect, moderateIntensityMinutes, vigorousIntensityMinutes } = activity
+  const hasSignal =
+    durationMin != null ||
+    trainingLoad != null ||
+    aerobicTrainingEffect != null ||
+    anaerobicTrainingEffect != null ||
+    moderateIntensityMinutes != null ||
+    vigorousIntensityMinutes != null
+
+  if (!hasSignal) {
     return null
   }
 
-  return round(value > 240 ? value / 3600 : value, 0)
+  const estimated =
+    6 +
+    (trainingLoad ?? 0) * 0.08 +
+    Math.max((aerobicTrainingEffect ?? 0) - 2, 0) * 4 +
+    (anaerobicTrainingEffect ?? 0) * 6 +
+    (moderateIntensityMinutes ?? 0) * 0.1 +
+    (vigorousIntensityMinutes ?? 0) * 0.25 +
+    Math.max((durationMin ?? 0) - 45, 0) * 0.03
+
+  return round(clamp(estimated, 6, 72), 0)
 }
 
 function enrichMetric(metric: DailyMetricInput): EnrichedMetric {
@@ -383,7 +407,6 @@ function enrichMetric(metric: DailyMetricInput): EnrichedMetric {
     remSleepHours: normalizeHoursFromSeconds(displayValues.remSleepHours),
     awakeDurationMinutes: displayValues.awakeDurationMinutes != null ? round(displayValues.awakeDurationMinutes / 60, 0) : null,
     sedentaryMinutes: normalizeMinutes(displayValues.sedentaryMinutes),
-    recoveryHours: normalizeRecoveryHours(displayValues.recoveryHours),
   }
 }
 
@@ -415,19 +438,26 @@ function isMetricUsableForAnalysis(metric: EnrichedMetric) {
     metric.acuteTrainingLoad,
     metric.chronicTrainingLoad,
     metric.acuteChronicLoadRatio,
-    metric.recoveryHours,
   ].some(hasAnalyzableMetricValue)
 }
 
 function enrichActivity(activity: ActivityInput): EnrichedActivity {
   const displayValues = getActivityDisplayValues(activity.raw)
+  const durationMin = activity.duration != null ? round(activity.duration / 60, 0) : null
 
   return {
     ...activity,
     ...displayValues,
-    durationMin: activity.duration != null ? round(activity.duration / 60, 0) : null,
+    durationMin,
     distanceKm: activity.distance != null ? round(activity.distance / 1000, 1) : null,
-    recoveryHours: normalizeRecoveryHours(displayValues.recoveryHours),
+    recoveryHours: estimateRecoveryHours({
+      durationMin,
+      trainingLoad: displayValues.trainingLoad,
+      aerobicTrainingEffect: displayValues.aerobicTrainingEffect,
+      anaerobicTrainingEffect: displayValues.anaerobicTrainingEffect,
+      moderateIntensityMinutes: displayValues.moderateIntensityMinutes,
+      vigorousIntensityMinutes: displayValues.vigorousIntensityMinutes,
+    }),
   }
 }
 
@@ -450,11 +480,10 @@ function isBaselineEligible(metric: EnrichedMetric) {
   const shortSleep = metric.sleepDurationHours != null && metric.sleepDurationHours < 5
   const tooManyInterruptions = metric.sleepInterruptions != null && metric.sleepInterruptions > 8
   const highStress = metric.stress != null && metric.stress >= 75
-  const heavyRecovery = metric.recoveryHours != null && metric.recoveryHours >= 72
   const excessiveIntensity = metric.vigorousIntensityMinutes != null && metric.vigorousIntensityMinutes >= 90
   const overload = metric.acuteChronicLoadRatio != null && metric.acuteChronicLoadRatio > 1.5
 
-  return !(poorSleep || shortSleep || tooManyInterruptions || highStress || heavyRecovery || excessiveIntensity || overload)
+  return !(poorSleep || shortSleep || tooManyInterruptions || highStress || excessiveIntensity || overload)
 }
 
 function getMetricAbnormality(options: {
@@ -609,7 +638,6 @@ function getMostRecentHighIntensityDate(metrics: EnrichedMetric[], activities: E
     )
     const highIntensity =
       (metric.vigorousIntensityMinutes != null && metric.vigorousIntensityMinutes >= 30) ||
-      (metric.recoveryHours != null && metric.recoveryHours >= 24) ||
       (metric.acuteChronicLoadRatio != null && metric.acuteChronicLoadRatio > 1.2) ||
       highActivityLoad
 
@@ -1008,7 +1036,7 @@ function buildWeeklyAssessment(options: {
     recoverySignals.push(`压力评分 ${latestMetric.stress} 偏高`)
   }
   if ((latestRecoveryHours ?? 0) >= 24) {
-    recoverySignals.push(`建议恢复时长 ${latestRecoveryHours} 小时`)
+    recoverySignals.push(`估算恢复时长 ${latestRecoveryHours} 小时`)
   }
 
   const loadConclusion = getWeeklyLoadConclusion(loadScore)
@@ -1132,7 +1160,7 @@ function buildFallbackReasonAnalysis(context: TrainingContext) {
   }
   if (context.activity.latestSession) {
     parts.push(
-      `最近一次训练 ${context.activity.latestSession.name}，时长 ${context.activity.latestSession.durationMin ?? "--"} 分钟${context.activity.latestSession.aerobicTrainingEffect != null ? `，有氧训练效果 ${context.activity.latestSession.aerobicTrainingEffect}` : ""}${context.activity.latestSession.recoveryHours != null ? `，建议恢复 ${context.activity.latestSession.recoveryHours} 小时` : ""}`
+      `最近一次训练 ${context.activity.latestSession.name}，时长 ${context.activity.latestSession.durationMin ?? "--"} 分钟${context.activity.latestSession.aerobicTrainingEffect != null ? `，有氧训练效果 ${context.activity.latestSession.aerobicTrainingEffect}` : ""}${context.activity.latestSession.recoveryHours != null ? `，估算恢复 ${context.activity.latestSession.recoveryHours} 小时` : ""}`
     )
   }
   parts.push(context.decision.ruleReason)
@@ -1421,7 +1449,7 @@ export function buildTrainingContext(metrics: DailyMetricInput[], activities: Ac
   )
   const hoursToBaseline = lastHighIntensityDate ? getHoursToBaseline(sortedMetrics, lastHighIntensityDate, baseline.restingHr.mean, baseline.hrv.mean) : null
   const recoveryCapacity = getRecoveryCapacity(hoursToBaseline, latestMetric.date, lastHighIntensityDate)
-  const latestRecoveryHours = latestMetric.recoveryHours ?? latestActivity?.recoveryHours ?? null
+  const latestRecoveryHours = latestActivity?.recoveryHours ?? null
   const weeklyAssessment = buildWeeklyAssessment({
     latestMetric,
     metrics: sortedMetrics,
@@ -1459,7 +1487,7 @@ export function buildTrainingContext(metrics: DailyMetricInput[], activities: Ac
   if (latestRecoveryHours != null && latestRecoveryHours >= 48 && shouldTrain !== "不训") {
     shouldTrain = "慎训"
     todayAdvice = "建议继续恢复，避免高强度训练。"
-    ruleReason = "最近一次高强度训练后的建议恢复时长仍偏长，身体尚未完全恢复。"
+    ruleReason = "最近一次训练的估算恢复时长仍偏长，身体尚未完全恢复。"
   }
 
   if (latestActivity && shouldTrain === "可训") {
