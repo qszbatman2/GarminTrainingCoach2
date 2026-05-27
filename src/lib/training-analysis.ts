@@ -156,9 +156,13 @@ export type TrainingContext = {
     toneHint: ToneHint
     latestSession: {
       date: string
+      startedAt: string
+      endedAt: string | null
       type: string
       name: string
       durationMin: number | null
+      distanceKm: number | null
+      averageHeartRate: number | null
       distanceKm: number | null
       averageHeartRate: number | null
       maxHeartRate: number | null
@@ -170,6 +174,7 @@ export type TrainingContext = {
   }
   recovery: {
     recoveryHours: number | null
+    readyAt: string | null
     lastHighIntensityDate: string | null
     hoursToBaseline: number | null
     recoveryCapacity: RecoveryCapacity
@@ -696,6 +701,15 @@ function getDaysDiff(later: Date, earlier: Date) {
 
 function getElapsedDaysInclusive(startDate: Date, endDate: Date) {
   return getDaysDiff(startOfDay(endDate), startOfDay(startDate)) + 1
+}
+
+function getSessionEndedAt(activity: EnrichedActivity | null) {
+  if (!activity) {
+    return null
+  }
+
+  const durationMs = typeof activity.duration === "number" && Number.isFinite(activity.duration) ? activity.duration * 1000 : 0
+  return new Date(activity.date.getTime() + durationMs)
 }
 
 function getDaysSinceLastSession(referenceDate: Date, activities: EnrichedActivity[]) {
@@ -1322,6 +1336,7 @@ export function buildTrainingContext(metrics: DailyMetricInput[], activities: Ac
       },
       recovery: {
         recoveryHours: null,
+        readyAt: null,
         lastHighIntensityDate: null,
         hoursToBaseline: null,
         recoveryCapacity: "unknown",
@@ -1468,6 +1483,11 @@ export function buildTrainingContext(metrics: DailyMetricInput[], activities: Ac
   const hoursToBaseline = lastHighIntensityDate ? getHoursToBaseline(sortedMetrics, lastHighIntensityDate, baseline.restingHr.mean, baseline.hrv.mean) : null
   const recoveryCapacity = getRecoveryCapacity(hoursToBaseline, latestMetric.date, lastHighIntensityDate)
   const latestRecoveryHours = latestActivity?.recoveryHours ?? null
+  const latestSessionEndedAt = getSessionEndedAt(latestActivity)
+  const recoveryReadyAt =
+    latestSessionEndedAt && latestRecoveryHours != null
+      ? new Date(latestSessionEndedAt.getTime() + latestRecoveryHours * 60 * 60 * 1000).toISOString()
+      : null
   const weeklyAssessment = buildWeeklyAssessment({
     latestMetric,
     metrics: sortedMetrics,
@@ -1633,6 +1653,8 @@ export function buildTrainingContext(metrics: DailyMetricInput[], activities: Ac
       latestSession: latestActivity
         ? {
             date: toDateKey(latestActivity.date),
+            startedAt: latestActivity.date.toISOString(),
+            endedAt: latestSessionEndedAt?.toISOString() ?? null,
             type: latestActivity.type,
             name: latestActivity.name,
             durationMin: latestActivity.durationMin,
@@ -1648,6 +1670,7 @@ export function buildTrainingContext(metrics: DailyMetricInput[], activities: Ac
     },
     recovery: {
       recoveryHours: latestRecoveryHours,
+      readyAt: recoveryReadyAt,
       lastHighIntensityDate: lastHighIntensityDate ? toDateKey(lastHighIntensityDate) : null,
       hoursToBaseline,
       recoveryCapacity,
