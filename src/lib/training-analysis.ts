@@ -363,6 +363,10 @@ function normalizeMinutes(value: number | null) {
   return round(value > 1440 ? value / 60 : value, 0)
 }
 
+function snapRecoveryHours(value: number) {
+  return Math.max(6, Math.round(value / 6) * 6)
+}
+
 function estimateRecoveryHours(activity: {
   durationMin: number | null
   trainingLoad: number | null
@@ -385,15 +389,15 @@ function estimateRecoveryHours(activity: {
   }
 
   const estimated =
-    6 +
-    (trainingLoad ?? 0) * 0.08 +
-    Math.max((aerobicTrainingEffect ?? 0) - 2, 0) * 4 +
-    (anaerobicTrainingEffect ?? 0) * 6 +
-    (moderateIntensityMinutes ?? 0) * 0.1 +
-    (vigorousIntensityMinutes ?? 0) * 0.25 +
-    Math.max((durationMin ?? 0) - 45, 0) * 0.03
+    3.5 +
+    (trainingLoad ?? 0) * 0.03 +
+    Math.max((aerobicTrainingEffect ?? 0) - 2, 0) * 1.5 +
+    (anaerobicTrainingEffect ?? 0) * 2.5 +
+    (moderateIntensityMinutes ?? 0) * 0.03 +
+    (vigorousIntensityMinutes ?? 0) * 0.08 +
+    Math.max((durationMin ?? 0) - 45, 0) * 0.01
 
-  return round(clamp(estimated, 6, 72), 0)
+  return snapRecoveryHours(clamp(estimated, 6, 48))
 }
 
 function enrichMetric(metric: DailyMetricInput): EnrichedMetric {
