@@ -1,7 +1,7 @@
 'use client'
 
 import Link from "next/link"
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 
 import { AITrainingReport } from "@/components/ai-training-report"
 import { AccentPill, MetricTile, SectionHeader, SubtleCard, SurfaceCard } from "@/components/design-system"
@@ -31,9 +31,20 @@ type ActivityItem = {
 
 type DataExplorerProps = {
   userEmail: string
+  metricTotal: number
   metrics: MetricItem[]
+  activityTotal: number
   activities: ActivityItem[]
   initialAnalysisReport: TrainingAnalysisPayload | null
+}
+
+type DataResponse = {
+  metrics: MetricItem[]
+  activities: ActivityItem[]
+  totals: {
+    metrics: number
+    activities: number
+  }
 }
 
 type MetricDisplayValues = ReturnType<typeof getMetricDisplayValues>
@@ -76,6 +87,39 @@ const FIELD_GROUP_OPTIONS: Array<{ key: FieldGroupKey; label: string }> = [
   { key: "activity", label: "活动代谢" },
   { key: "load", label: "训练负荷" },
 ]
+
+function mergeById<T extends { id: string }>(current: T[], incoming: T[]) {
+  const existingIds = new Set(current.map((item) => item.id))
+  if (incoming.every((item) => existingIds.has(item.id))) {
+    return current
+  }
+
+  return [...current, ...incoming.filter((item) => !existingIds.has(item.id))]
+}
+
+function LoadingTile({ label = "加载中" }: { label?: string }) {
+  return (
+    <SubtleCard className="animate-pulse p-4">
+      <div className="h-4 w-20 rounded-full bg-white/10" />
+      <div className="mt-4 h-8 w-28 rounded-full bg-white/10" />
+      <div className="mt-3 h-3 w-24 rounded-full bg-white/10" />
+      <div className="mt-3 text-xs text-slate-500">{label}</div>
+    </SubtleCard>
+  )
+}
+
+function LoadingRows({ count = 4 }: { count?: number }) {
+  return (
+    <div className="space-y-3 px-5 py-5">
+      {Array.from({ length: count }).map((_, index) => (
+        <div className="animate-pulse rounded-2xl border border-white/8 bg-white/[0.03] px-4 py-4" key={index}>
+          <div className="h-4 w-32 rounded-full bg-white/10" />
+          <div className="mt-3 h-3 w-48 rounded-full bg-white/10" />
+        </div>
+      ))}
+    </div>
+  )
+}
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max)
@@ -528,28 +572,88 @@ function buildFieldEntries(metric: EnrichedMetric | null): FieldEntry[] {
   ]
 }
 
-export function DataExplorer({ userEmail, metrics, activities, initialAnalysisReport }: DataExplorerProps) {
+export function DataExplorer({ userEmail, metricTotal, metrics, activityTotal, activities, initialAnalysisReport }: DataExplorerProps) {
+  const [metricsState, setMetricsState] = useState(metrics)
+  const [activitiesState, setActivitiesState] = useState(activities)
+  const [metricsLoading, setMetricsLoading] = useState(false)
+  const [activitiesLoading, setActivitiesLoading] = useState(false)
   const [selectedDate, setSelectedDate] = useState(metrics[0]?.date ?? "")
   const [selectedDetailChart, setSelectedDetailChart] = useState<DailyDetailChartKey>("heartRate")
   const [validationTab, setValidationTab] = useState<ValidationTab>("fields")
   const [fieldGroup, setFieldGroup] = useState<FieldGroupKey>("all")
   const [fieldSearch, setFieldSearch] = useState("")
+  const metricsRequestStarted = useRef(false)
+  const activitiesRequestStarted = useRef(false)
+
+  const hasMoreMetrics = metricsState.length < metricTotal
+  const hasMoreActivities = activitiesState.length < activityTotal
+
+  useEffect(() => {
+    if (!hasMoreMetrics || metricsLoading || metricsRequestStarted.current) {
+      return
+    }
+
+    metricsRequestStarted.current = true
+    setMetricsLoading(true)
+
+    void fetch(`/api/data?metricOffset=${metricsState.length}&metricLimit=60&activityOffset=0&activityLimit=0`, {
+      cache: "no-store",
+    })
+      .then(async (response) => {
+        const data = (await response.json()) as DataResponse | { error?: string }
+        if (!response.ok) {
+          throw new Error("error" in data && typeof data.error === "string" ? data.error : "加载历史 Daily 失败")
+        }
+
+        setMetricsState((current) => mergeById(current, (data as DataResponse).metrics))
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        setMetricsLoading(false)
+      })
+  }, [hasMoreMetrics, metricsLoading, metricsState.length])
+
+  useEffect(() => {
+    if (!hasMoreActivities || activitiesLoading || activitiesRequestStarted.current) {
+      return
+    }
+
+    activitiesRequestStarted.current = true
+    setActivitiesLoading(true)
+
+    void fetch(`/api/data?metricOffset=0&metricLimit=0&activityOffset=${activitiesState.length}&activityLimit=60`, {
+      cache: "no-store",
+    })
+      .then(async (response) => {
+        const data = (await response.json()) as DataResponse | { error?: string }
+        if (!response.ok) {
+          throw new Error("error" in data && typeof data.error === "string" ? data.error : "加载历史活动失败")
+        }
+
+        setActivitiesState((current) => mergeById(current, (data as DataResponse).activities))
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        setActivitiesLoading(false)
+      })
+  }, [activitiesLoading, activitiesState.length, hasMoreActivities])
 
   const enrichedMetrics = useMemo<EnrichedMetric[]>(
     () =>
-      metrics.map((metric) => ({
+      metricsState.map((metric) => ({
         ...metric,
         ...getMetricDisplayValues(metric.raw),
       })),
-    [metrics]
+    [metricsState]
   )
 
   const metricsAsc = useMemo(() => [...enrichedMetrics].sort((a, b) => a.date.localeCompare(b.date)), [enrichedMetrics])
   const recentMetrics = useMemo(() => metricsAsc.slice(-10), [metricsAsc])
   const last7Metrics = useMemo(() => metricsAsc.slice(-7), [metricsAsc])
   const previous7Metrics = useMemo(() => metricsAsc.slice(-14, -7), [metricsAsc])
-  const selectedMetric = enrichedMetrics.find((metric) => metric.date === selectedDate) ?? enrichedMetrics[0] ?? null
-  const latestActivities = activities.slice(0, 12)
+  const effectiveSelectedDate = selectedDate || metricsState[0]?.date || ""
+  const selectedMetric = enrichedMetrics.find((metric) => metric.date === effectiveSelectedDate) ?? enrichedMetrics[0] ?? null
+  const latestActivities = activitiesState.slice(0, Math.max(activitiesState.length, 12))
 
   const heartRateSeries = selectedMetric ? getHeartRateSeries(selectedMetric.raw) : []
   const stressSeries = selectedMetric ? getStressSeries(selectedMetric.raw) : []
@@ -856,6 +960,7 @@ export function DataExplorer({ userEmail, metrics, activities, initialAnalysisRe
               {metric.date}
             </button>
           ))}
+          {metricsLoading ? <span className="rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-sm text-slate-300">历史日期加载中...</span> : null}
         </div>
 
         {selectedMetric ? (
@@ -964,6 +1069,13 @@ export function DataExplorer({ userEmail, metrics, activities, initialAnalysisRe
                   <div className="mt-2 text-xs uppercase tracking-[0.18em] text-slate-500">{field.group}</div>
                 </SubtleCard>
               ))}
+              {metricsLoading && filteredFields.length === 0 ? (
+                <>
+                  <LoadingTile />
+                  <LoadingTile />
+                  <LoadingTile />
+                </>
+              ) : null}
             </div>
 
             {filteredFields.length === 0 ? <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-6 text-center text-sm text-slate-400">没有命中字段。</div> : null}
@@ -997,19 +1109,22 @@ export function DataExplorer({ userEmail, metrics, activities, initialAnalysisRe
               <span>日期</span>
             </div>
             {latestActivities.length > 0 ? (
-              latestActivities.map((activity) => (
-                <div className="grid grid-cols-[1.4fr_0.8fr_0.8fr_1fr] border-t border-white/8 px-5 py-4 text-sm text-slate-300" key={activity.id}>
-                  <div>
-                    <div className="font-medium text-white">{activity.name}</div>
-                    <div className="mt-1 text-xs uppercase tracking-[0.18em] text-slate-500">{activity.type.replaceAll("_", " ")}</div>
+              <>
+                {latestActivities.map((activity) => (
+                  <div className="grid grid-cols-[1.4fr_0.8fr_0.8fr_1fr] border-t border-white/8 px-5 py-4 text-sm text-slate-300" key={activity.id}>
+                    <div>
+                      <div className="font-medium text-white">{activity.name}</div>
+                      <div className="mt-1 text-xs uppercase tracking-[0.18em] text-slate-500">{activity.type.replaceAll("_", " ")}</div>
+                    </div>
+                    <span>{formatDistance(activity.distance)}</span>
+                    <span>{formatDuration(activity.duration)}</span>
+                    <span>{activity.date}</span>
                   </div>
-                  <span>{formatDistance(activity.distance)}</span>
-                  <span>{formatDuration(activity.duration)}</span>
-                  <span>{activity.date}</span>
-                </div>
-              ))
+                ))}
+                {activitiesLoading ? <LoadingRows count={3} /> : null}
+              </>
             ) : (
-              <div className="px-5 py-8 text-sm text-slate-400">还没有活动记录。</div>
+              <div className="px-5 py-8 text-sm text-slate-400">{activitiesLoading ? "活动记录加载中..." : "还没有活动记录。"}</div>
             )}
           </div>
         ) : null}

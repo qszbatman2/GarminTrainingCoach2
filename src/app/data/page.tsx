@@ -7,6 +7,9 @@ import { AppPage, PageHero } from "@/components/design-system"
 import { getLatestSavedAnalysisReport } from "@/lib/analysis-report"
 import prisma from "@/lib/prisma"
 
+const INITIAL_METRICS_LIMIT = 21
+const INITIAL_ACTIVITIES_LIMIT = 12
+
 export default async function DataPage() {
   const session = await auth()
 
@@ -19,8 +22,15 @@ export default async function DataPage() {
     select: {
       id: true,
       email: true,
+      _count: {
+        select: {
+          metrics: true,
+          activities: true,
+        },
+      },
       metrics: {
         orderBy: { date: "desc" },
+        take: INITIAL_METRICS_LIMIT,
         select: {
           id: true,
           date: true,
@@ -33,6 +43,7 @@ export default async function DataPage() {
       },
       activities: {
         orderBy: { date: "desc" },
+        take: INITIAL_ACTIVITIES_LIMIT,
         select: {
           id: true,
           garminId: true,
@@ -78,6 +89,7 @@ export default async function DataPage() {
         title="已同步数据分析"
       />
         <DataExplorer
+          activityTotal={user._count.activities}
           activities={user.activities.map((activity) => ({
             id: activity.id,
             garminId: activity.garminId,
@@ -97,6 +109,7 @@ export default async function DataPage() {
             stress: metric.stress,
             raw: metric.raw,
           }))}
+          metricTotal={user._count.metrics}
           userEmail={user.email}
           initialAnalysisReport={initialAnalysisReport}
         />
