@@ -22,6 +22,7 @@ export default async function DataPage() {
     select: {
       id: true,
       email: true,
+      trainingGoal: true,
       _count: {
         select: {
           metrics: true,
@@ -112,6 +113,7 @@ export default async function DataPage() {
           metricTotal={user._count.metrics}
           userEmail={user.email}
           initialAnalysisReport={initialAnalysisReport}
+          trainingGoal={user.trainingGoal ?? ""}
         />
     </AppPage>
   )

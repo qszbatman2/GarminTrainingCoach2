@@ -255,7 +255,7 @@ export function DashboardShell({
                 <SubtleCard>
                   <div className="text-sm text-slate-400">最新同步日</div>
                   <div className="mt-2 text-2xl font-semibold text-white">{latestMetricDateLabel}</div>
-                  <div className="mt-2 text-sm text-slate-400">{metrics.length > 0 ? `累计 ${metrics.length} 天 Daily` : "还没有可分析数据"}</div>
+                  <div className="mt-2 text-sm text-slate-400">{latestMetricDate ? `最近一日 Daily 已同步` : "还没有可分析数据"}</div>
                 </SubtleCard>
               </div>
 
@@ -276,7 +276,7 @@ export function DashboardShell({
             </SurfaceCard>
           </section>
 
-          {metrics.length === 0 ? (
+          {!latestMetricDate ? (
             <section className="rounded-[1.75rem] border border-dashed border-white/12 bg-white/[0.04] px-6 py-10 text-center shadow-[0_18px_50px_rgba(15,23,42,0.04)]">
               <h2 className="text-2xl font-semibold tracking-tight text-white">还没有可生成 AI 的数据</h2>
               <p className="mx-auto mt-3 max-w-2xl text-sm leading-7 text-slate-300">先去同步状态页拉取首批数据，再回首页看今日训练建议。</p>

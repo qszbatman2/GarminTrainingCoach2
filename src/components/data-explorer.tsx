@@ -36,6 +36,7 @@ type DataExplorerProps = {
   activityTotal: number
   activities: ActivityItem[]
   initialAnalysisReport: TrainingAnalysisPayload | null
+  trainingGoal: string
 }
 
 type DataResponse = {
@@ -572,7 +573,7 @@ function buildFieldEntries(metric: EnrichedMetric | null): FieldEntry[] {
   ]
 }
 
-export function DataExplorer({ userEmail, metricTotal, metrics, activityTotal, activities, initialAnalysisReport }: DataExplorerProps) {
+export function DataExplorer({ userEmail, metricTotal, metrics, activityTotal, activities, initialAnalysisReport, trainingGoal }: DataExplorerProps) {
   const [metricsState, setMetricsState] = useState(metrics)
   const [activitiesState, setActivitiesState] = useState(activities)
   const [metricsLoading, setMetricsLoading] = useState(false)
@@ -813,7 +814,7 @@ export function DataExplorer({ userEmail, metricTotal, metrics, activityTotal, a
 
   return (
     <>
-      <AITrainingReport initialReport={initialAnalysisReport} />
+      <AITrainingReport initialReport={initialAnalysisReport} trainingGoal={trainingGoal} />
 
       <section className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
         <SurfaceCard className="p-5">
