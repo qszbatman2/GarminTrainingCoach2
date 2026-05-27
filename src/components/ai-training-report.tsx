@@ -83,12 +83,15 @@ export function AITrainingReport({
   }
 
   return (
-    <SurfaceCard className="p-7">
-      <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+    <SurfaceCard className="p-6">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div>
-          <div className="text-xs uppercase tracking-[0.25em] text-violet-300/80">AI Coach</div>
-          <h2 className="mt-3 text-3xl font-semibold tracking-tight text-white">今日训练建议</h2>
-          <p className="mt-3 max-w-3xl text-sm leading-7 text-slate-300">先看今天能不能练，再看一句建议；如果你填了训练目标，本周评估会额外判断当前进度是否贴合目标。</p>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="text-xs uppercase tracking-[0.25em] text-violet-300/80">AI Coach</div>
+            {trainingGoal ? <AccentPill tone="violet">已结合训练目标</AccentPill> : null}
+          </div>
+          <h2 className="mt-2 text-3xl font-semibold tracking-tight text-white">今日训练结论</h2>
+          <p className="mt-2 text-sm text-slate-300">首屏先回答今天能不能练，详细数据放后面。</p>
         </div>
         <button
           className="rounded-full bg-violet-600 px-5 py-3 text-sm font-medium text-white transition hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-60"
@@ -103,8 +106,8 @@ export function AITrainingReport({
       {error ? <div className="mt-5 rounded-2xl border border-rose-400/25 bg-rose-400/10 px-4 py-3 text-sm text-rose-200">{error}</div> : null}
 
       {result ? (
-        <div className="mt-6 space-y-5">
-          <SubtleCard className="border-violet-400/15 bg-[linear-gradient(135deg,rgba(139,92,246,0.14),rgba(15,23,42,0.3))] p-6">
+        <div className="mt-5">
+          <SubtleCard className="border-violet-400/15 bg-[linear-gradient(135deg,rgba(139,92,246,0.14),rgba(15,23,42,0.3))] p-5">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex flex-wrap items-center gap-3">
                 <div className="text-sm font-semibold text-white">AI 判断</div>
@@ -112,41 +115,33 @@ export function AITrainingReport({
               </div>
               <div className="text-xs text-slate-300">更新于 {formatTime(result.updatedAt)}</div>
             </div>
-            <div className="mt-5 text-sm text-slate-300">今日建议</div>
-            <div className="mt-2 text-2xl font-semibold tracking-tight text-white">{result.analysis.todayAdvice}</div>
-            <p className="mt-4 text-sm leading-7 text-slate-200">{result.analysis.reasonAnalysis}</p>
 
-            {trainingGoal ? (
-              <div className="mt-6 rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-4">
-                <div className="text-sm text-slate-300">当前训练目标</div>
-                <p className="mt-2 text-sm leading-7 text-slate-200">{trainingGoal}</p>
+            <div className="mt-5 grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
+              <div className="rounded-[1.2rem] border border-white/10 bg-white/[0.04] p-5">
+                <div className="text-sm text-slate-300">今日建议</div>
+                <div className="mt-2 text-2xl font-semibold tracking-tight text-white">{result.analysis.todayAdvice}</div>
+                <p className="mt-3 text-sm leading-6 text-slate-200">{result.analysis.reasonAnalysis}</p>
               </div>
-            ) : null}
 
-            <div className="mt-6 border-t border-white/10 pt-6">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
+              <div className="rounded-[1.2rem] border border-white/10 bg-white/[0.04] p-5">
+                <div className="flex flex-wrap items-center justify-between gap-3">
                   <div className="text-sm font-semibold text-white">本周训练量评估</div>
-                  <div className="mt-1 text-xs text-slate-400">优先对比最近 4 周同样周进度的累计节奏，再参考完整周趋势，判断这周练得是否合理。</div>
+                  <AccentPill tone={weeklyTone(result.analysis.weeklyLoadAssessment.overallConclusion)}>
+                    {result.analysis.weeklyLoadAssessment.overallConclusion}
+                  </AccentPill>
                 </div>
-                <AccentPill tone={weeklyTone(result.analysis.weeklyLoadAssessment.overallConclusion)}>
-                  {result.analysis.weeklyLoadAssessment.overallConclusion}
-                </AccentPill>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <AccentPill tone="neutral">训练量 {result.analysis.weeklyLoadAssessment.loadConclusion}</AccentPill>
+                  <AccentPill tone="neutral">强度 {result.analysis.weeklyLoadAssessment.intensityConclusion}</AccentPill>
+                </div>
+                <div className="mt-4 text-lg font-semibold tracking-tight text-white">{result.analysis.weeklyLoadAssessment.advice}</div>
+                <p className="mt-3 text-sm leading-6 text-slate-200">{result.analysis.weeklyLoadAssessment.reasonAnalysis}</p>
               </div>
-
-              <div className="mt-4 flex flex-wrap gap-2">
-                <AccentPill tone="neutral">训练量 {result.analysis.weeklyLoadAssessment.loadConclusion}</AccentPill>
-                <AccentPill tone="neutral">强度 {result.analysis.weeklyLoadAssessment.intensityConclusion}</AccentPill>
-              </div>
-
-              <div className="mt-5 text-sm text-slate-300">本周建议</div>
-              <div className="mt-2 text-xl font-semibold tracking-tight text-white">{result.analysis.weeklyLoadAssessment.advice}</div>
-              <p className="mt-4 text-sm leading-7 text-slate-200">{result.analysis.weeklyLoadAssessment.reasonAnalysis}</p>
             </div>
           </SubtleCard>
         </div>
       ) : (
-        <SubtleCard className="mt-6 p-6">
+        <SubtleCard className="mt-5 p-5">
           <div className="text-sm text-slate-400">当前还没有 AI 报告</div>
           <div className="mt-2 text-xl font-semibold text-white">先生成首份建议，再决定今天怎么练。</div>
         </SubtleCard>
