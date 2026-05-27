@@ -18,6 +18,7 @@ model User {
   email          String        @unique
   password       String?
   name           String?
+  trainingGoal   String?
   garminEmail    String?
   garminPassword String?       // 简单起见MVP先明文/简单加密存储
   metrics        DailyMetric[]

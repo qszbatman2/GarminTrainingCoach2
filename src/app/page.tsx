@@ -32,6 +32,7 @@ export default async function Home() {
     try {
       initialAnalysisReport = await getOrCreateLatestAnalysisReport({
         userId: user.id,
+        trainingGoal: user.trainingGoal,
         metrics: user.metrics.map((metric) => ({
           id: metric.id,
           date: metric.date,
@@ -71,6 +72,7 @@ export default async function Home() {
       }))}
       userEmail={user.email}
       userName={user.name ?? user.email.split("@")[0]}
+      trainingGoal={user.trainingGoal ?? ""}
     />
   )
 }

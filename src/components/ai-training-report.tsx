@@ -47,7 +47,13 @@ function formatTime(value?: string) {
   })
 }
 
-export function AITrainingReport({ initialReport }: { initialReport: TrainingAnalysisPayload | null }) {
+export function AITrainingReport({
+  initialReport,
+  trainingGoal,
+}: {
+  initialReport: TrainingAnalysisPayload | null
+  trainingGoal: string
+}) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
   const [result, setResult] = useState<ApiResult | null>(initialReport ? { ok: true, ...initialReport } : null)
@@ -82,7 +88,7 @@ export function AITrainingReport({ initialReport }: { initialReport: TrainingAna
         <div>
           <div className="text-xs uppercase tracking-[0.25em] text-violet-300/80">AI Coach</div>
           <h2 className="mt-3 text-3xl font-semibold tracking-tight text-white">今日训练建议</h2>
-          <p className="mt-3 max-w-3xl text-sm leading-7 text-slate-300">先看今天能不能练，再看一句建议；下面新增本周训练量评估，判断这周练得是否合理。</p>
+          <p className="mt-3 max-w-3xl text-sm leading-7 text-slate-300">先看今天能不能练，再看一句建议；如果你填了训练目标，本周评估会额外判断当前进度是否贴合目标。</p>
         </div>
         <button
           className="rounded-full bg-violet-600 px-5 py-3 text-sm font-medium text-white transition hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-60"
@@ -110,11 +116,18 @@ export function AITrainingReport({ initialReport }: { initialReport: TrainingAna
             <div className="mt-2 text-2xl font-semibold tracking-tight text-white">{result.analysis.todayAdvice}</div>
             <p className="mt-4 text-sm leading-7 text-slate-200">{result.analysis.reasonAnalysis}</p>
 
+            {trainingGoal ? (
+              <div className="mt-6 rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-4">
+                <div className="text-sm text-slate-300">当前训练目标</div>
+                <p className="mt-2 text-sm leading-7 text-slate-200">{trainingGoal}</p>
+              </div>
+            ) : null}
+
             <div className="mt-6 border-t border-white/10 pt-6">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <div className="text-sm font-semibold text-white">本周训练量评估</div>
-                  <div className="mt-1 text-xs text-slate-400">对比本周当前节奏与本月均值、折算周均，判断训练量和强度是否合理。</div>
+                  <div className="mt-1 text-xs text-slate-400">优先对比最近 4 周同样周进度的累计节奏，再参考完整周趋势，判断这周练得是否合理。</div>
                 </div>
                 <AccentPill tone={weeklyTone(result.analysis.weeklyLoadAssessment.overallConclusion)}>
                   {result.analysis.weeklyLoadAssessment.overallConclusion}

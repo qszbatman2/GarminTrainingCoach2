@@ -389,6 +389,40 @@ function enrichMetric(metric: DailyMetricInput): EnrichedMetric {
   }
 }
 
+function hasAnalyzableMetricValue(value: number | null | undefined) {
+  return typeof value === "number" && Number.isFinite(value)
+}
+
+function isMetricUsableForAnalysis(metric: EnrichedMetric) {
+  return [
+    metric.sleepScore,
+    metric.restingHr,
+    metric.hrv,
+    metric.stress,
+    metric.sleepDurationHours,
+    metric.deepSleepHours,
+    metric.remSleepHours,
+    metric.sleepInterruptions,
+    metric.awakeDurationMinutes,
+    metric.trainingReadiness,
+    metric.bodyBatteryHigh,
+    metric.bodyBatteryLow,
+    metric.bloodOxygen,
+    metric.respiration,
+    metric.steps,
+    metric.intensityMinutes,
+    metric.moderateIntensityMinutes,
+    metric.vigorousIntensityMinutes,
+    metric.weight,
+    metric.vo2Max,
+    metric.lactateThresholdHr,
+    metric.acuteTrainingLoad,
+    metric.chronicTrainingLoad,
+    metric.acuteChronicLoadRatio,
+    metric.recoveryHours,
+  ].some(hasAnalyzableMetricValue)
+}
+
 function enrichActivity(activity: ActivityInput): EnrichedActivity {
   const displayValues = getActivityDisplayValues(activity.raw)
 
@@ -1173,8 +1207,11 @@ function fallbackAnalysis(context: TrainingContext): TrainingAnalysisResult {
 export function buildTrainingContext(metrics: DailyMetricInput[], activities: ActivityInput[]): TrainingContext {
   const sortedMetrics = [...metrics].sort((a, b) => a.date.getTime() - b.date.getTime()).map(enrichMetric)
   const sortedActivities = [...activities].sort((a, b) => a.date.getTime() - b.date.getTime()).map(enrichActivity)
-  const latestMetric = sortedMetrics[sortedMetrics.length - 1]
+  const latestMetric = [...sortedMetrics].reverse().find(isMetricUsableForAnalysis) ?? null
   const latestActivity = sortedActivities[sortedActivities.length - 1] ?? null
+  const skippedRecentMetricDates = latestMetric
+    ? sortedMetrics.filter((metric) => metric.date.getTime() > latestMetric.date.getTime() && !isMetricUsableForAnalysis(metric)).map((metric) => toDateKey(metric.date))
+    : []
 
   if (!latestMetric) {
     return {
@@ -1474,6 +1511,9 @@ export function buildTrainingContext(metrics: DailyMetricInput[], activities: Ac
   const missingData: string[] = []
   if (baseline.validDays < 7) {
     missingData.push("近 28 天有效基线样本不足，已回退到原始 28 天窗口估算。")
+  }
+  if (skippedRecentMetricDates.length > 0) {
+    missingData.push(`已跳过最近 ${skippedRecentMetricDates.length} 天的空白 Garmin 日数据（${skippedRecentMetricDates.join("、")}），避免把未同步成功误判为休息日。`)
   }
   if (latestMetric.restingHr == null) {
     missingData.push("缺少当日静息心率，疲劳判定精度下降。")

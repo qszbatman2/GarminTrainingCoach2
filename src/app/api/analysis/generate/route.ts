@@ -17,6 +17,7 @@ export async function POST(request: Request) {
       where: { id: session.user.id },
       select: {
         id: true,
+        trainingGoal: true,
         metrics: {
           orderBy: { date: "asc" },
           select: {
@@ -54,6 +55,7 @@ export async function POST(request: Request) {
 
     const report = await getOrCreateLatestAnalysisReport({
       userId: user.id,
+      trainingGoal: user.trainingGoal,
       metrics: user.metrics,
       activities: user.activities,
       forceRefresh: Boolean(body.forceRefresh),
