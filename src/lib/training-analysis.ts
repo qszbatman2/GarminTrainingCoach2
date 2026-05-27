@@ -363,21 +363,19 @@ function normalizeMinutes(value: number | null) {
   return round(value > 1440 ? value / 60 : value, 0)
 }
 
-function snapRecoveryHours(value: number) {
-  return Math.max(6, Math.round(value / 6) * 6)
-}
-
 function estimateRecoveryHours(activity: {
   durationMin: number | null
+  distanceKm: number | null
   trainingLoad: number | null
   aerobicTrainingEffect: number | null
   anaerobicTrainingEffect: number | null
   moderateIntensityMinutes: number | null
   vigorousIntensityMinutes: number | null
 }) {
-  const { durationMin, trainingLoad, aerobicTrainingEffect, anaerobicTrainingEffect, moderateIntensityMinutes, vigorousIntensityMinutes } = activity
+  const { durationMin, distanceKm, trainingLoad, aerobicTrainingEffect, anaerobicTrainingEffect, moderateIntensityMinutes, vigorousIntensityMinutes } = activity
   const hasSignal =
     durationMin != null ||
+    distanceKm != null ||
     trainingLoad != null ||
     aerobicTrainingEffect != null ||
     anaerobicTrainingEffect != null ||
@@ -388,16 +386,31 @@ function estimateRecoveryHours(activity: {
     return null
   }
 
-  const estimated =
-    3.5 +
-    (trainingLoad ?? 0) * 0.03 +
-    Math.max((aerobicTrainingEffect ?? 0) - 2, 0) * 1.5 +
-    (anaerobicTrainingEffect ?? 0) * 2.5 +
-    (moderateIntensityMinutes ?? 0) * 0.03 +
-    (vigorousIntensityMinutes ?? 0) * 0.08 +
-    Math.max((durationMin ?? 0) - 45, 0) * 0.01
+  const veryLightSession = (durationMin ?? 0) <= 35 && (trainingLoad ?? 0) < 80 && (vigorousIntensityMinutes ?? 0) < 20 && (anaerobicTrainingEffect ?? 0) < 1
+  if (veryLightSession) {
+    return 2
+  }
 
-  return snapRecoveryHours(clamp(estimated, 6, 48))
+  const longEnduranceSession = (durationMin ?? 0) >= 150 || (distanceKm ?? 0) >= 70
+  if (longEnduranceSession) {
+    return 36
+  }
+
+  const shortButDemandingSession =
+    (durationMin ?? 0) <= 90 &&
+    ((trainingLoad ?? 0) >= 80 || (vigorousIntensityMinutes ?? 0) >= 20 || (anaerobicTrainingEffect ?? 0) >= 2 || (aerobicTrainingEffect ?? 0) >= 3)
+  if (shortButDemandingSession) {
+    return 12
+  }
+
+  const mediumLongDemandingSession =
+    (durationMin ?? 0) > 90 &&
+    ((trainingLoad ?? 0) >= 150 || (vigorousIntensityMinutes ?? 0) >= 40 || (anaerobicTrainingEffect ?? 0) >= 2 || (aerobicTrainingEffect ?? 0) >= 3.5)
+  if (mediumLongDemandingSession) {
+    return 24
+  }
+
+  return 6
 }
 
 function enrichMetric(metric: DailyMetricInput): EnrichedMetric {
@@ -456,6 +469,7 @@ function enrichActivity(activity: ActivityInput): EnrichedActivity {
     distanceKm: activity.distance != null ? round(activity.distance / 1000, 1) : null,
     recoveryHours: estimateRecoveryHours({
       durationMin,
+      distanceKm: activity.distance != null ? round(activity.distance / 1000, 1) : null,
       trainingLoad: displayValues.trainingLoad,
       aerobicTrainingEffect: displayValues.aerobicTrainingEffect,
       anaerobicTrainingEffect: displayValues.anaerobicTrainingEffect,
