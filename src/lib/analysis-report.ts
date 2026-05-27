@@ -14,7 +14,7 @@ import {
 } from "@/lib/training-analysis"
 
 const REPORT_TYPE = "latest"
-const ANALYSIS_VERSION = "training-rule-v7-weekly-progress"
+const ANALYSIS_VERSION = "training-rule-v8-remove-unavailable-readiness-spo2"
 
 function normalizeJson<T>(value: unknown) {
   return JSON.parse(JSON.stringify(value)) as T

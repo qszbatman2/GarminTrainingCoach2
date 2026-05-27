@@ -109,8 +109,6 @@ export type TrainingContext = {
     sleepInterruptions: number | null
     stress: number | null
     respiration: number | null
-    bloodOxygen: number | null
-    trainingReadiness: number | null
     bodyBatteryHigh: number | null
     bodyBatteryLow: number | null
     sedentaryMinutes: number | null
@@ -404,10 +402,8 @@ function isMetricUsableForAnalysis(metric: EnrichedMetric) {
     metric.remSleepHours,
     metric.sleepInterruptions,
     metric.awakeDurationMinutes,
-    metric.trainingReadiness,
     metric.bodyBatteryHigh,
     metric.bodyBatteryLow,
-    metric.bloodOxygen,
     metric.respiration,
     metric.steps,
     metric.intensityMinutes,
@@ -454,13 +450,11 @@ function isBaselineEligible(metric: EnrichedMetric) {
   const shortSleep = metric.sleepDurationHours != null && metric.sleepDurationHours < 5
   const tooManyInterruptions = metric.sleepInterruptions != null && metric.sleepInterruptions > 8
   const highStress = metric.stress != null && metric.stress >= 75
-  const lowReadiness = metric.trainingReadiness != null && metric.trainingReadiness < 30
-  const lowOxygen = metric.bloodOxygen != null && metric.bloodOxygen < 92
   const heavyRecovery = metric.recoveryHours != null && metric.recoveryHours >= 72
   const excessiveIntensity = metric.vigorousIntensityMinutes != null && metric.vigorousIntensityMinutes >= 90
   const overload = metric.acuteChronicLoadRatio != null && metric.acuteChronicLoadRatio > 1.5
 
-  return !(poorSleep || shortSleep || tooManyInterruptions || highStress || lowReadiness || lowOxygen || heavyRecovery || excessiveIntensity || overload)
+  return !(poorSleep || shortSleep || tooManyInterruptions || highStress || heavyRecovery || excessiveIntensity || overload)
 }
 
 function getMetricAbnormality(options: {
@@ -1130,11 +1124,6 @@ function buildFallbackReasonAnalysis(context: TrainingContext) {
       `睡眠评分 ${context.today.sleepScore} 分${context.today.sleepInterruptions != null ? `，睡眠中断 ${context.today.sleepInterruptions} 次` : ""}${context.today.sleepDurationHours != null ? `，总睡眠 ${context.today.sleepDurationHours} 小时` : ""}`
     )
   }
-  if (context.today.bloodOxygen != null || context.today.trainingReadiness != null) {
-    parts.push(
-      `辅助恢复信号${context.today.bloodOxygen != null ? `：夜间血氧 ${context.today.bloodOxygen}%` : ""}${context.today.trainingReadiness != null ? `${context.today.bloodOxygen != null ? "，" : "："}训练准备度 ${context.today.trainingReadiness}` : ""}`
-    )
-  }
   if (context.fatigue.totalScore != null) {
     parts.push(`综合疲劳得分 ${context.fatigue.totalScore} 分，处于${context.fatigue.level}区间`)
   }
@@ -1243,8 +1232,6 @@ export function buildTrainingContext(metrics: DailyMetricInput[], activities: Ac
         sleepInterruptions: null,
         stress: null,
         respiration: null,
-        bloodOxygen: null,
-        trainingReadiness: null,
         bodyBatteryHigh: null,
         bodyBatteryLow: null,
         sedentaryMinutes: null,
@@ -1539,12 +1526,6 @@ export function buildTrainingContext(metrics: DailyMetricInput[], activities: Ac
   if (latestMetric.remSleepHours == null) {
     missingData.push("缺少 REM 睡眠数据，睡眠结构判断不完整。")
   }
-  if (latestMetric.bloodOxygen == null) {
-    missingData.push("缺少夜间血氧数据，恢复信号少一层校验。")
-  }
-  if (latestMetric.trainingReadiness == null) {
-    missingData.push("缺少训练准备度数据，恢复结论偏保守。")
-  }
   if (latestActivity && latestActivity.trainingLoad == null && latestActivity.aerobicTrainingEffect == null && latestActivity.anaerobicTrainingEffect == null) {
     missingData.push("最近训练缺少训练效果或训练负荷字段，活动级刺激判断有限。")
   }
@@ -1569,8 +1550,6 @@ export function buildTrainingContext(metrics: DailyMetricInput[], activities: Ac
       sleepInterruptions: latestMetric.sleepInterruptions,
       stress: latestMetric.stress,
       respiration: latestMetric.respiration,
-      bloodOxygen: latestMetric.bloodOxygen,
-      trainingReadiness: latestMetric.trainingReadiness,
       bodyBatteryHigh: latestMetric.bodyBatteryHigh,
       bodyBatteryLow: latestMetric.bodyBatteryLow,
       sedentaryMinutes: latestMetric.sedentaryMinutes,
