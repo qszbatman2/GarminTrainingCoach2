@@ -67,7 +67,7 @@ function formatCountdown(targetTime: string, now: number) {
   return `${minutes}分钟`
 }
 
-function recoveryTone(value: number) {
+function recoveryTone(value: number): "emerald" | "amber" | "violet" {
   return value <= 0 ? "emerald" : value <= 6 * 60 * 60 * 1000 ? "amber" : "violet"
 }
 

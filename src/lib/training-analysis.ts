@@ -163,8 +163,6 @@ export type TrainingContext = {
       durationMin: number | null
       distanceKm: number | null
       averageHeartRate: number | null
-      distanceKm: number | null
-      averageHeartRate: number | null
       maxHeartRate: number | null
       aerobicTrainingEffect: number | null
       anaerobicTrainingEffect: number | null
