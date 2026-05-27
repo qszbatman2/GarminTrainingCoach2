@@ -8,6 +8,7 @@ type GarminPayload = {
 }
 
 export type GarminSyncMode = "full" | "partial_today"
+export type GarminWriteStrategy = "merge_gaps" | "prefer_incoming"
 
 type SyncUserInput = {
   userId: string
@@ -15,6 +16,7 @@ type SyncUserInput = {
   garminPassword: string
   date: string
   mode?: GarminSyncMode
+  writeStrategy?: GarminWriteStrategy
 }
 
 type SyncResult = {
@@ -117,12 +119,16 @@ function dedupeLabels(labels: string[]) {
   return [...new Set(labels.filter(Boolean))]
 }
 
-function collectUpdatedMetricLabels(existing: unknown, incoming: Record<string, unknown>) {
+function collectUpdatedMetricLabels(
+  existing: unknown,
+  incoming: Record<string, unknown>,
+  writeStrategy: GarminWriteStrategy
+) {
   const existingRecord = asRecord(existing) ?? {}
   const labels: string[] = []
 
   for (const [key, fieldLabels] of Object.entries(DAILY_UPDATE_LABELS)) {
-    const result = mergeGapData(existingRecord[key], incoming[key])
+    const result = mergeData(existingRecord[key], incoming[key], writeStrategy)
     if (result.changed) {
       labels.push(...fieldLabels)
     }
@@ -232,6 +238,53 @@ function mergeGapData(existing: unknown, incoming: unknown): { value: unknown; c
   }
 
   return { value: existing, changed: false }
+}
+
+function preferIncomingData(existing: unknown, incoming: unknown): { value: unknown; changed: boolean } {
+  if (incoming === undefined) {
+    return { value: existing, changed: false }
+  }
+
+  if (!hasMeaningfulValue(incoming)) {
+    return { value: existing, changed: false }
+  }
+
+  if (!hasMeaningfulValue(existing)) {
+    return { value: incoming, changed: true }
+  }
+
+  if (Array.isArray(existing) || Array.isArray(incoming)) {
+    if (!Array.isArray(incoming)) {
+      return { value: existing, changed: false }
+    }
+
+    return { value: incoming, changed: JSON.stringify(existing) !== JSON.stringify(incoming) }
+  }
+
+  const existingRecord = asRecord(existing)
+  const incomingRecord = asRecord(incoming)
+  if (existingRecord && incomingRecord) {
+    const merged: Record<string, unknown> = { ...existingRecord }
+    let changed = false
+
+    for (const [key, incomingValue] of Object.entries(incomingRecord)) {
+      const result = preferIncomingData(existingRecord[key], incomingValue)
+      merged[key] = result.value
+      changed = changed || result.changed
+    }
+
+    return { value: merged, changed }
+  }
+
+  return { value: incoming, changed: JSON.stringify(existing) !== JSON.stringify(incoming) }
+}
+
+function mergeData(existing: unknown, incoming: unknown, writeStrategy: GarminWriteStrategy) {
+  if (writeStrategy === "prefer_incoming") {
+    return preferIncomingData(existing, incoming)
+  }
+
+  return mergeGapData(existing, incoming)
 }
 
 function shallowEqualMetricSummary(
@@ -346,6 +399,7 @@ export async function syncGarminDateForUser({
   garminPassword,
   date,
   mode = "full",
+  writeStrategy = "merge_gaps",
 }: SyncUserInput): Promise<SyncResult> {
   const existingMetric = await prisma.dailyMetric.findUnique({
     where: {
@@ -367,9 +421,9 @@ export async function syncGarminDateForUser({
 
   const data = await fetchGarminPayload(garminEmail, garminPassword, date, mode)
   const remoteMetrics = asRecord(data.daily_metrics) ?? {}
-  const metricUpdatedFields = collectUpdatedMetricLabels(existingMetric?.raw, remoteMetrics)
+  const metricUpdatedFields = collectUpdatedMetricLabels(existingMetric?.raw, remoteMetrics, writeStrategy)
   const activities = Array.isArray(data.activities) ? data.activities : []
-  const metricMerge = mergeGapData(existingMetric?.raw, remoteMetrics)
+  const metricMerge = mergeData(existingMetric?.raw, remoteMetrics, writeStrategy)
   const mergedMetricRaw = (asRecord(metricMerge.value) ?? remoteMetrics) as Prisma.InputJsonValue
   const metricSummary = getMetricSummary(mergedMetricRaw)
   const previousSummary = getMetricSummary(existingMetric?.raw)
@@ -421,7 +475,7 @@ export async function syncGarminDateForUser({
     }
 
     const existingActivity = existingActivityMap.get(garminId)
-    const activityMerge = mergeGapData(existingActivity?.raw, activityRecord)
+    const activityMerge = mergeData(existingActivity?.raw, activityRecord, writeStrategy)
     const mergedActivityRaw = (asRecord(activityMerge.value) ?? activityRecord) as Prisma.InputJsonValue
     const nextName = String(asRecord(mergedActivityRaw)?.activityName ?? existingActivity?.name ?? "Unknown Activity")
     const nextType = String(asRecord(asRecord(mergedActivityRaw)?.activityType)?.typeKey ?? existingActivity?.type ?? "unknown")

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 
 import { processBackfillJob } from "@/lib/backfill-jobs"
 import prisma from "@/lib/prisma"
-import { GarminSyncMode, getDateKey, syncGarminDateForUser } from "@/lib/garmin-sync"
+import { GarminSyncMode, GarminWriteStrategy, getDateKey, syncGarminDateForUser } from "@/lib/garmin-sync"
 
 export const dynamic = "force-dynamic"
 
@@ -41,9 +41,9 @@ export async function GET(request: Request) {
   }
 
   try {
-    const syncTargets: Array<{ date: string; mode: GarminSyncMode }> = [
-      { date: getYesterdayInShanghai(), mode: "full" },
-      { date: getTodayInShanghai(), mode: "partial_today" },
+    const syncTargets: Array<{ date: string; mode: GarminSyncMode; writeStrategy: GarminWriteStrategy }> = [
+      { date: getYesterdayInShanghai(), mode: "full", writeStrategy: "prefer_incoming" },
+      { date: getTodayInShanghai(), mode: "partial_today", writeStrategy: "merge_gaps" },
     ]
     const users = await prisma.user.findMany({
       where: {
@@ -72,7 +72,14 @@ export async function GET(request: Request) {
       },
     })
 
-    const results: Array<{ email: string; date: string; mode: GarminSyncMode; success: boolean; error?: string }> = []
+    const results: Array<{
+      email: string
+      date: string
+      mode: GarminSyncMode
+      writeStrategy: GarminWriteStrategy
+      success: boolean
+      error?: string
+    }> = []
     for (const user of users) {
       for (const target of syncTargets) {
         try {
@@ -82,14 +89,22 @@ export async function GET(request: Request) {
             garminPassword: user.garminPassword ?? "",
             date: getDateKey(target.date),
             mode: target.mode,
+            writeStrategy: target.writeStrategy,
           })
 
-          results.push({ email: user.email, date: target.date, mode: target.mode, success: true })
+          results.push({
+            email: user.email,
+            date: target.date,
+            mode: target.mode,
+            writeStrategy: target.writeStrategy,
+            success: true,
+          })
         } catch (error: unknown) {
           results.push({
             email: user.email,
             date: target.date,
             mode: target.mode,
+            writeStrategy: target.writeStrategy,
             success: false,
             error: error instanceof Error ? error.message : "同步失败",
           })
