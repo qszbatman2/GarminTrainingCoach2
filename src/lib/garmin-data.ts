@@ -740,7 +740,7 @@ export const DAILY_TREND_GROUPS: TrendMetricGroup[] = [
       { key: "steps", title: "步数", unit: "steps", source: "raw", paths: ["daily_steps.totalSteps", "steps.totalSteps", "stats.totalSteps"] },
       {
         key: "intensityMinutes",
-        title: "强度分钟",
+        title: "加权强度分钟",
         unit: "min",
         source: "raw",
         paths: [

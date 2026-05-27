@@ -108,7 +108,7 @@ export const SUPPORTED_FIELD_GROUPS: SupportedFieldGroup[] = [
       { id: "sedentary", label: "久坐时长", metricPaths: ["stats.sedentarySeconds", "stats.inactiveTimeInSeconds", "stats.sedentaryTimeInSeconds", "steps.sedentarySeconds", "steps.totalSedentarySeconds"] },
       {
         id: "intensityMinutes",
-        label: "强度分钟",
+        label: "加权强度分钟",
         metricPaths: [
           "intensity_minutes.totalIntensityMinutes",
           "intensity_minutes.intensityMinutes",

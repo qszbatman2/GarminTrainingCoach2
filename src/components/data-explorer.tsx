@@ -548,7 +548,7 @@ function buildFieldEntries(metric: EnrichedMetric | null): FieldEntry[] {
     { key: "bloodOxygen", label: "血氧", group: "energy", value: formatNumber(metric.bloodOxygen, 0, " %") },
     { key: "respiration", label: "呼吸频率", group: "energy", value: formatNumber(metric.respiration, 0, " brpm") },
     { key: "steps", label: "步数", group: "activity", value: formatNumber(metric.steps) },
-    { key: "intensityMinutes", label: "强度分钟", group: "activity", value: formatNumber(metric.intensityMinutes, 0, " min") },
+    { key: "intensityMinutes", label: "加权强度分钟", group: "activity", value: formatNumber(metric.intensityMinutes, 0, " min") },
     { key: "moderateIntensityMinutes", label: "中等强度", group: "activity", value: formatNumber(metric.moderateIntensityMinutes, 0, " min") },
     { key: "vigorousIntensityMinutes", label: "高强度", group: "activity", value: formatNumber(metric.vigorousIntensityMinutes, 0, " min") },
     { key: "activeCalories", label: "活动消耗", group: "activity", value: formatNumber(metric.activeCalories, 0, " kcal") },
@@ -911,7 +911,7 @@ export function DataExplorer({ userEmail, metricTotal, metrics, activityTotal, a
               { key: "moderate", label: "中等强度", color: "#22d3ee" },
               { key: "vigorous", label: "高强度", color: "#f97316" },
             ]}
-            title="强度分钟"
+            title="中高强度分钟"
             unit="minutes"
           />
           <MultiLineChart
@@ -969,7 +969,7 @@ export function DataExplorer({ userEmail, metricTotal, metrics, activityTotal, a
               <MetricTile detail="恢复质量" label="睡眠评分" value={formatNumber(selectedMetric.sleepScore)} />
               <MetricTile detail="自主神经恢复" label="HRV" value={formatNumber(selectedMetric.hrv, 0, " ms")} />
               <MetricTile detail="训练 readiness 信号" label="训练准备度" value={formatNumber(selectedMetric.trainingReadiness)} />
-              <MetricTile detail="当日总训练量" label="强度分钟" value={formatNumber(selectedMetric.intensityMinutes, 0, " min")} />
+              <MetricTile detail="Garmin 总分口径" label="加权强度分钟" value={formatNumber(selectedMetric.intensityMinutes, 0, " min")} />
               <MetricTile detail="当天高点" label="Body Battery 高点" value={formatNumber(selectedMetric.bodyBatteryHigh)} />
               <MetricTile detail="当天低点" label="Body Battery 低点" value={formatNumber(selectedMetric.bodyBatteryLow)} />
             </div>
