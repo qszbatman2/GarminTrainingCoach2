@@ -1,10 +1,10 @@
 import Link from "next/link"
 
 import { auth } from "@/auth"
-import { getOrCreateLatestAnalysisReport } from "@/lib/analysis-report"
 import { AuthPanel } from "@/components/auth-panel"
 import { DataExplorer } from "@/components/data-explorer"
 import { AppPage, PageHero } from "@/components/design-system"
+import { getLatestSavedAnalysisReport } from "@/lib/analysis-report"
 import prisma from "@/lib/prisma"
 
 export default async function DataPage() {
@@ -16,12 +16,33 @@ export default async function DataPage() {
 
   const user = await prisma.user.findUnique({
     where: { id: session.user.id },
-    include: {
+    select: {
+      id: true,
+      email: true,
       metrics: {
         orderBy: { date: "desc" },
+        select: {
+          id: true,
+          date: true,
+          sleepScore: true,
+          hrv: true,
+          restingHr: true,
+          stress: true,
+          raw: true,
+        },
       },
       activities: {
         orderBy: { date: "desc" },
+        select: {
+          id: true,
+          garminId: true,
+          name: true,
+          type: true,
+          distance: true,
+          duration: true,
+          date: true,
+          raw: true,
+        },
       },
     },
   })
@@ -33,27 +54,7 @@ export default async function DataPage() {
   let initialAnalysisReport = null
   if (user.metrics.length > 0) {
     try {
-      initialAnalysisReport = await getOrCreateLatestAnalysisReport({
-        userId: user.id,
-        metrics: user.metrics.map((metric) => ({
-          id: metric.id,
-          date: metric.date,
-          sleepScore: metric.sleepScore,
-          hrv: metric.hrv,
-          restingHr: metric.restingHr,
-          stress: metric.stress,
-          raw: metric.raw,
-        })),
-        activities: user.activities.map((activity) => ({
-          id: activity.id,
-          name: activity.name,
-          type: activity.type,
-          distance: activity.distance,
-          duration: activity.duration,
-          date: activity.date,
-          raw: activity.raw,
-        })),
-      })
+      initialAnalysisReport = await getLatestSavedAnalysisReport(user.id)
     } catch (error) {
       console.error("[Trae] Fix: failed to prefetch analysis report", error)
     }

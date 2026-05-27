@@ -1,7 +1,7 @@
 import { auth } from "@/auth"
 import { AuthPanel } from "@/components/auth-panel"
 import { DashboardShell } from "@/components/dashboard-shell"
-import { getOrCreateLatestAnalysisReport } from "@/lib/analysis-report"
+import { getLatestSavedAnalysisReport } from "@/lib/analysis-report"
 import prisma from "@/lib/prisma"
 
 export default async function Home() {
@@ -13,12 +13,18 @@ export default async function Home() {
 
   const user = await prisma.user.findUnique({
     where: { id: session.user.id },
-    include: {
+    select: {
+      id: true,
+      email: true,
+      name: true,
+      garminEmail: true,
+      trainingGoal: true,
       metrics: {
         orderBy: { date: "desc" },
-      },
-      activities: {
-        orderBy: { date: "desc" },
+        take: 1,
+        select: {
+          date: true,
+        },
       },
     },
   })
@@ -30,28 +36,7 @@ export default async function Home() {
   let initialAnalysisReport = null
   if (user.garminEmail && user.metrics.length > 0) {
     try {
-      initialAnalysisReport = await getOrCreateLatestAnalysisReport({
-        userId: user.id,
-        trainingGoal: user.trainingGoal,
-        metrics: user.metrics.map((metric) => ({
-          id: metric.id,
-          date: metric.date,
-          sleepScore: metric.sleepScore,
-          hrv: metric.hrv,
-          restingHr: metric.restingHr,
-          stress: metric.stress,
-          raw: metric.raw,
-        })),
-        activities: user.activities.map((activity) => ({
-          id: activity.id,
-          name: activity.name,
-          type: activity.type,
-          distance: activity.distance,
-          duration: activity.duration,
-          date: activity.date,
-          raw: activity.raw,
-        })),
-      })
+      initialAnalysisReport = await getLatestSavedAnalysisReport(user.id)
     } catch (error) {
       console.error("[Trae] Fix: failed to prefetch homepage analysis report", error)
     }
@@ -61,15 +46,7 @@ export default async function Home() {
     <DashboardShell
       garminEmail={user.garminEmail ?? ""}
       initialAnalysisReport={initialAnalysisReport}
-      metrics={user.metrics.map((metric) => ({
-        id: metric.id,
-        date: metric.date.toISOString().slice(0, 10),
-        sleepScore: metric.sleepScore,
-        hrv: metric.hrv,
-        restingHr: metric.restingHr,
-        stress: metric.stress,
-        raw: metric.raw,
-      }))}
+      latestMetricDate={user.metrics[0]?.date.toISOString().slice(0, 10) ?? null}
       userEmail={user.email}
       userName={user.name ?? user.email.split("@")[0]}
       trainingGoal={user.trainingGoal ?? ""}

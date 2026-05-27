@@ -9,22 +9,12 @@ import { AITrainingReport } from "@/components/ai-training-report"
 import { AppPage, PageHero, SurfaceCard, SubtleCard } from "@/components/design-system"
 import type { TrainingAnalysisPayload } from "@/lib/training-analysis"
 
-type MetricSnapshot = {
-  id: string
-  date: string
-  sleepScore: number | null
-  hrv: number | null
-  restingHr: number | null
-  stress: number | null
-  raw: unknown
-}
-
 type DashboardShellProps = {
   userName: string
   userEmail: string
   garminEmail: string
   trainingGoal: string
-  metrics: MetricSnapshot[]
+  latestMetricDate: string | null
   initialAnalysisReport: TrainingAnalysisPayload | null
 }
 
@@ -32,7 +22,7 @@ export function DashboardShell({
   userName,
   garminEmail,
   trainingGoal,
-  metrics,
+  latestMetricDate,
   initialAnalysisReport,
 }: DashboardShellProps) {
   const router = useRouter()
@@ -46,7 +36,7 @@ export function DashboardShell({
   const [trainingGoalMessage, setTrainingGoalMessage] = useState("")
 
   const hasGarminBinding = garminEmail.trim().length > 0
-  const latestMetricDate = metrics[0]?.date ?? "--"
+  const latestMetricDateLabel = latestMetricDate ?? "--"
 
   async function handleSaveBinding(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -264,7 +254,7 @@ export function DashboardShell({
                 </SubtleCard>
                 <SubtleCard>
                   <div className="text-sm text-slate-400">最新同步日</div>
-                  <div className="mt-2 text-2xl font-semibold text-white">{latestMetricDate}</div>
+                  <div className="mt-2 text-2xl font-semibold text-white">{latestMetricDateLabel}</div>
                   <div className="mt-2 text-sm text-slate-400">{metrics.length > 0 ? `累计 ${metrics.length} 天 Daily` : "还没有可分析数据"}</div>
                 </SubtleCard>
               </div>
