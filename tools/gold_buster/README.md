@@ -64,7 +64,58 @@ Minimal MCP bridge for turn logging:
 python -m tools.gold_buster.mcp_server --recorder-url http://127.0.0.1:8765
 ```
 
-Recommended MCP registration shape:
+Windows wrapper script:
+
+```powershell
+tools\gold_buster\start_mcp.cmd
+```
+
+Recommended MCP registration shape on Windows:
+
+```json
+{
+  "mcpServers": {
+    "gold-buster-recorder": {
+      "command": "C:\\Windows\\System32\\cmd.exe",
+      "args": [
+        "/d",
+        "/c",
+        "C:\\AI CODING\\P22-GarminTrainingCoach2\\web\\tools\\gold_buster\\start_mcp.cmd"
+      ]
+    }
+  }
+}
+```
+
+If the recorder URL is not the default `http://127.0.0.1:8765`, set an environment variable before launching Trae:
+
+```powershell
+$env:GOLD_BUSTER_RECORDER_URL="http://127.0.0.1:8765"
+```
+
+Direct Python launch remains available for manual debugging:
+
+```json
+{
+  "mcpServers": {
+    "gold-buster-recorder": {
+      "command": "C:\\Users\\Admin\\AppData\\Local\\Programs\\Python\\Python313\\python.exe",
+      "args": [
+        "-u",
+        "C:\\AI CODING\\P22-GarminTrainingCoach2\\web\\tools\\gold_buster\\mcp_server.py",
+        "--recorder-url",
+        "http://127.0.0.1:8765"
+      ],
+      "cwd": "C:\\AI CODING\\P22-GarminTrainingCoach2\\web",
+      "env": {
+        "PYTHONIOENCODING": "utf-8"
+      }
+    }
+  }
+}
+```
+
+Old minimal example:
 
 ```json
 {
