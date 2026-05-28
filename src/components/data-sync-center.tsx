@@ -1,4 +1,4 @@
-﻿'use client'
+'use client'
 
 import Link from "next/link"
 import { useRouter } from "next/navigation"
@@ -455,102 +455,102 @@ export function DataSyncCenter({
       </SurfaceCard>
 
       {currentCalendar ? (
-        <div className="max-w-fit">
-          <SurfaceCard className="p-4 sm:p-5">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="flex items-center gap-2">
-                <button
-                  className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/8 bg-white/[0.03] text-sm text-slate-200 transition hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-35"
-                  disabled={calendarMonthIndex === 0}
-                  onClick={() => setCalendarMonthIndex((value) => Math.max(0, value - 1))}
-                  type="button"
-                >
-                  ←
-                </button>
-                <div className="min-w-24 text-center font-[family:var(--font-display)] text-xl font-semibold tracking-tight text-white">
-                  {currentCalendar.monthLabel}
-                </div>
-                <button
-                  className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/8 bg-white/[0.03] text-sm text-slate-200 transition hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-35"
-                  disabled={calendarMonthIndex === syncCalendarMonths.length - 1}
-                  onClick={() => setCalendarMonthIndex((value) => Math.min(syncCalendarMonths.length - 1, value + 1))}
-                  type="button"
-                >
-                  →
-                </button>
+        <div className="inline-block align-top">
+          <SurfaceCard className="w-fit p-4 sm:p-5">
+            <div className="flex items-center gap-2">
+              <button
+                className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/8 bg-white/[0.03] text-sm text-slate-200 transition hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-35"
+                disabled={calendarMonthIndex === 0}
+                onClick={() => setCalendarMonthIndex((value) => Math.max(0, value - 1))}
+                type="button"
+              >
+                ←
+              </button>
+              <div className="min-w-24 text-center font-[family:var(--font-display)] text-xl font-semibold tracking-tight text-white">
+                {currentCalendar.monthLabel}
               </div>
-
-              <div className="flex flex-wrap items-center gap-3 text-[11px] text-slate-400">
-                {(["future", "partial", "empty", "complete"] as SyncCalendarDayStatus[]).map((status) => (
-                  <span className="inline-flex items-center gap-1.5" key={status}>
-                    <span className={`h-[9px] w-[9px] rounded-[2px] border ${CALENDAR_STATUS_META[status].squareClassName}`} />
-                    {CALENDAR_STATUS_META[status].label}
-                  </span>
-                ))}
-              </div>
+              <button
+                className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/8 bg-white/[0.03] text-sm text-slate-200 transition hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-35"
+                disabled={calendarMonthIndex === syncCalendarMonths.length - 1}
+                onClick={() => setCalendarMonthIndex((value) => Math.min(syncCalendarMonths.length - 1, value + 1))}
+                type="button"
+              >
+                →
+              </button>
             </div>
 
-            <div className="mt-4 flex items-start gap-3">
-              <div className="grid grid-rows-7 gap-2 pt-[18px] text-[10px] uppercase tracking-[0.18em] text-slate-600">
-                {["一", "", "三", "", "五", "", "日"].map((label, index) => (
-                  <span className="flex h-[14px] items-center" key={`${label}-${index}`}>
-                    {label}
-                  </span>
-                ))}
-              </div>
-
-              <div>
-                <div
-                  className="grid grid-flow-col grid-rows-7 gap-2"
-                  style={{ gridTemplateRows: "repeat(7, 14px)", gridAutoColumns: "14px" }}
-                >
-                  {heatmapCells.map((cell) => {
-                    if (!cell.day) {
-                      return <div className="h-[14px] w-[14px] rounded-[2px]" key={cell.key} />
-                    }
-
-                    const day = cell.day
-                    const isSelected = effectiveSelectedCalendarDate === day.date
-
-                    return (
-                      <button
-                        aria-label={`${day.date} ${CALENDAR_STATUS_META[day.status].label}`}
-                        className={`h-[14px] w-[14px] rounded-[2px] border transition duration-150 ${CALENDAR_STATUS_META[day.status].squareClassName} ${
-                          isSelected ? "scale-[1.18] border-cyan-200/60 ring-2 ring-cyan-300/50" : ""
-                        } ${day.isToday && !isSelected ? "ring-1 ring-white/25" : ""}`}
-                        key={cell.key}
-                        onClick={() => setSelectedCalendarDate(day.date)}
-                        title={`${day.date} · ${CALENDAR_STATUS_META[day.status].label}`}
-                        type="button"
-                      />
-                    )
-                  })}
+            <div className="mt-4 rounded-[1.4rem] border border-white/6 bg-black/10 px-3 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
+              <div className="grid grid-cols-[10px_auto] items-start gap-3">
+                <div className="grid grid-rows-7 gap-1.5 pt-[2px] text-[10px] uppercase tracking-[0.18em] text-slate-600">
+                  {["一", "", "三", "", "五", "", "日"].map((label, index) => (
+                    <span className="flex h-[13px] items-center justify-center" key={`${label}-${index}`}>
+                      {label}
+                    </span>
+                  ))}
                 </div>
 
-                {selectedCalendarDay ? (
-                  <div className="mt-4 flex flex-wrap items-center gap-2 text-xs text-slate-300">
-                    <span className="font-medium text-white">{selectedCalendarDay.date}</span>
-                    <AccentPill tone={CALENDAR_STATUS_META[selectedCalendarDay.status].pillTone}>
-                      {CALENDAR_STATUS_META[selectedCalendarDay.status].label}
-                    </AccentPill>
-                    <span>Daily {selectedCalendarDay.metricComplete ? "完整" : selectedCalendarDay.hasMetric ? "待补齐" : "无"}</span>
-                    <span>
-                      活动{" "}
-                      {selectedCalendarDay.activityCount > 0
-                        ? selectedCalendarDay.incompleteActivityCount > 0
-                          ? `${selectedCalendarDay.activityCount} / 缺口 ${selectedCalendarDay.incompleteActivityCount}`
-                          : `${selectedCalendarDay.activityCount} 完整`
-                        : "无"}
-                    </span>
-                    {selectedCalendarDay.isToday ? <span className="text-slate-500">今日默认按待补齐处理</span> : null}
-                  </div>
-                ) : null}
+                <div>
+                  <div
+                    className="grid grid-flow-col grid-rows-7 gap-1.5"
+                    style={{ gridTemplateRows: "repeat(7, 13px)", gridAutoColumns: "13px" }}
+                  >
+                    {heatmapCells.map((cell) => {
+                      if (!cell.day) {
+                        return <div className="h-[13px] w-[13px] rounded-[3px]" key={cell.key} />
+                      }
 
-                <div className="mt-3 flex flex-wrap items-center gap-3 text-[11px] text-slate-500">
-                  <span>灰 {calendarSummary.future}</span>
-                  <span>黄 {calendarSummary.partial}</span>
-                  <span>红 {calendarSummary.empty}</span>
-                  <span>绿 {calendarSummary.complete}</span>
+                      const day = cell.day
+                      const isSelected = effectiveSelectedCalendarDate === day.date
+
+                      return (
+                        <button
+                          aria-label={`${day.date} ${CALENDAR_STATUS_META[day.status].label}`}
+                          className={`h-[13px] w-[13px] rounded-[3px] border transition duration-150 ${CALENDAR_STATUS_META[day.status].squareClassName} ${
+                            isSelected ? "scale-[1.14] border-cyan-200/60 ring-2 ring-cyan-300/45" : ""
+                          } ${day.isToday && !isSelected ? "ring-1 ring-white/20" : ""}`}
+                          key={cell.key}
+                          onClick={() => setSelectedCalendarDate(day.date)}
+                          title={`${day.date} · ${CALENDAR_STATUS_META[day.status].label}`}
+                          type="button"
+                        />
+                      )
+                    })}
+                  </div>
+
+                  <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-400">
+                    {(["future", "partial", "empty", "complete"] as SyncCalendarDayStatus[]).map((status) => (
+                      <span className="inline-flex items-center gap-1.5" key={status}>
+                        <span className={`h-[8px] w-[8px] rounded-[2px] border ${CALENDAR_STATUS_META[status].squareClassName}`} />
+                        {CALENDAR_STATUS_META[status].label}
+                      </span>
+                    ))}
+                  </div>
+
+                  {selectedCalendarDay ? (
+                    <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2 text-xs text-slate-300">
+                      <span className="font-medium text-white">{selectedCalendarDay.date}</span>
+                      <AccentPill tone={CALENDAR_STATUS_META[selectedCalendarDay.status].pillTone}>
+                        {CALENDAR_STATUS_META[selectedCalendarDay.status].label}
+                      </AccentPill>
+                      <span>Daily {selectedCalendarDay.metricComplete ? "完整" : selectedCalendarDay.hasMetric ? "待补齐" : "无"}</span>
+                      <span>
+                        活动
+                        {selectedCalendarDay.activityCount > 0
+                          ? selectedCalendarDay.incompleteActivityCount > 0
+                            ? ` ${selectedCalendarDay.activityCount} / 缺口 ${selectedCalendarDay.incompleteActivityCount}`
+                            : ` ${selectedCalendarDay.activityCount} 完整`
+                          : " 无"}
+                      </span>
+                      {selectedCalendarDay.isToday ? <span className="text-slate-500">今日默认按待补齐处理</span> : null}
+                    </div>
+                  ) : null}
+
+                  <div className="mt-3 flex flex-wrap items-center gap-3 text-[11px] text-slate-500">
+                    <span>灰 {calendarSummary.future}</span>
+                    <span>黄 {calendarSummary.partial}</span>
+                    <span>红 {calendarSummary.empty}</span>
+                    <span>绿 {calendarSummary.complete}</span>
+                  </div>
                 </div>
               </div>
             </div>
