@@ -20,6 +20,7 @@ HISTORY_PATH = REPORTS_DIR / "audit_history.json"
 DEFAULT_PROJECT_HINT = "GarminTrainingCoach2"
 DEFAULT_ARK_API_URL = "https://ark.cn-beijing.volces.com/api/v3/chat/completions"
 DEFAULT_ARK_MODEL = "doubao-seed-1-6-250615"
+ENV_FILE_CANDIDATES = (".env", ".env.local")
 TOPIC_RE = re.compile(
     r"\[session_id:\s*(?P<session_id>[^\s|]+)\s*\|\s*topic_summary_time:\s*(?P<time>[^\]]+)\](?P<summary>.*)"
 )
@@ -75,6 +76,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
 
 
 def main(argv: list[str] | None = None) -> int:
+    load_local_env()
     args = parse_args(argv or sys.argv[1:])
     if args.command == "probe":
         return run_probe(args)
@@ -382,8 +384,16 @@ def get_model_provider() -> dict[str, str]:
         or os.getenv("DEEPSEEK_API_KEY")
         or ""
     )
-    api_url = os.getenv("GOLD_BUSTER_API_URL", DEFAULT_ARK_API_URL)
-    model = os.getenv("GOLD_BUSTER_MODEL", DEFAULT_ARK_MODEL)
+    api_url = (
+        os.getenv("GOLD_BUSTER_API_URL")
+        or os.getenv("ARK_API_URL")
+        or DEFAULT_ARK_API_URL
+    )
+    model = (
+        os.getenv("GOLD_BUSTER_MODEL")
+        or os.getenv("ARK_MODEL")
+        or DEFAULT_ARK_MODEL
+    )
 
     if "deepseek.com" in api_url:
         name = "DeepSeek"
@@ -475,6 +485,32 @@ def escape_table(value: str) -> str:
 
 def normalize_name(value: str) -> str:
     return re.sub(r"[^a-z0-9]+", "", value.lower())
+
+
+def load_local_env() -> None:
+    for env_file in resolve_env_files():
+        for raw_line in env_file.read_text(encoding="utf-8", errors="ignore").splitlines():
+            line = raw_line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, value = line.split("=", 1)
+            key = key.strip()
+            value = value.strip().strip("'").strip('"')
+            if key:
+                os.environ.setdefault(key, value)
+
+
+def resolve_env_files() -> list[Path]:
+    base_dirs = [Path.cwd(), Path(__file__).resolve().parents[2]]
+    seen: set[Path] = set()
+    files: list[Path] = []
+    for base_dir in base_dirs:
+        for file_name in ENV_FILE_CANDIDATES:
+            env_path = (base_dir / file_name).resolve()
+            if env_path.exists() and env_path not in seen:
+                seen.add(env_path)
+                files.append(env_path)
+    return files
 
 
 def now_iso() -> str:
