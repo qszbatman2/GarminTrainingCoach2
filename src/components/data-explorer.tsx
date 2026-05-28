@@ -3,10 +3,10 @@
 import Link from "next/link"
 import { useEffect, useMemo, useRef, useState } from "react"
 
-import { AITrainingReport } from "@/components/ai-training-report"
 import { AccentPill, MetricTile, SectionHeader, SubtleCard, SurfaceCard } from "@/components/design-system"
 import { RecoveryCountdownCard } from "@/components/recovery-countdown-card"
-import { getBodyBatterySeries, getHeartRateSeries, getMetricDisplayValues, getStressSeries, type NumericPoint } from "@/lib/garmin-data"
+import { getActivityDisplayValues, getBodyBatterySeries, getHeartRateSeries, getMetricDisplayValues, getStressSeries, type NumericPoint } from "@/lib/garmin-data"
+import { formatShanghaiDateTime, parseGarminDateTime } from "@/lib/shanghai-time"
 import type { TrainingAnalysisPayload } from "@/lib/training-analysis"
 
 type MetricItem = {
@@ -36,7 +36,6 @@ type DataExplorerProps = {
   activityTotal: number
   activities: ActivityItem[]
   initialAnalysisReport: TrainingAnalysisPayload | null
-  trainingGoal: string
 }
 
 type DataResponse = {
@@ -71,7 +70,7 @@ type RangeDatum = {
 
 type StackDatum = {
   label: string
-  segments: Array<{ key: string; value: number; color: string }>
+  segments: Array<{ key: string; value: number; color: string; tooltip?: string }>
 }
 
 type FieldEntry = {
@@ -148,6 +147,30 @@ function formatDuration(duration: number | null) {
   }
 
   return `${hours}h ${minutes}m`
+}
+
+function formatActivityType(type: string) {
+  return type.replaceAll("_", " ")
+}
+
+function formatCompactHours(value: number | null | undefined) {
+  if (value == null || !Number.isFinite(value)) {
+    return "--"
+  }
+
+  return `${value.toFixed(1)}h`
+}
+
+function parseActivityDateTime(gmtValue: string | null | undefined, localValue: string | null | undefined) {
+  return parseGarminDateTime(gmtValue, "utc") ?? parseGarminDateTime(localValue, "shanghai")
+}
+
+function formatActivityDateTimeLabel(date: Date | null) {
+  if (!date) {
+    return "--"
+  }
+
+  return formatShanghaiDateTime(date, { includeYear: false })
 }
 
 function getTopLevelKeys(raw: unknown) {
@@ -245,18 +268,43 @@ function buildAreaPath(data: NumericPoint[], min: number, max: number) {
   return `0,100 ${line} 100,100`
 }
 
+function buildTrendSeries(data: NumericPoint[]) {
+  if (data.length < 2) {
+    return []
+  }
+
+  const points = data.map((item, index) => ({ x: index, y: item.value }))
+  const count = points.length
+  const sumX = points.reduce((total, point) => total + point.x, 0)
+  const sumY = points.reduce((total, point) => total + point.y, 0)
+  const sumXY = points.reduce((total, point) => total + point.x * point.y, 0)
+  const sumXX = points.reduce((total, point) => total + point.x * point.x, 0)
+  const denominator = count * sumXX - sumX * sumX
+  const slope = denominator === 0 ? 0 : (count * sumXY - sumX * sumY) / denominator
+  const intercept = (sumY - slope * sumX) / count
+
+  return points.map((point, index) => ({
+    label: data[index]?.label ?? String(index),
+    value: slope * point.x + intercept,
+  }))
+}
+
 function StackedColumnChart({
   title,
   description,
   unit,
   data,
   segments,
+  hideUnitPill = false,
+  formatTotal = (total: number) => formatNumber(total, total < 10 ? 1 : 0),
 }: {
   title: string
-  description: string
-  unit: string
+  description?: string
+  unit?: string
   data: StackDatum[]
   segments: Array<{ key: string; label: string; color: string }>
+  hideUnitPill?: boolean
+  formatTotal?: (total: number) => string
 }) {
   const maxTotal = Math.max(...data.map((item) => item.segments.reduce((sum, segment) => sum + segment.value, 0)), 1)
 
@@ -265,9 +313,9 @@ function StackedColumnChart({
       <div className="flex items-start justify-between gap-4">
         <div>
           <h3 className="text-xl font-semibold text-white">{title}</h3>
-          <p className="mt-2 text-sm leading-6 text-slate-400">{description}</p>
+          {description ? <p className="mt-2 text-sm leading-6 text-slate-400">{description}</p> : null}
         </div>
-        <AccentPill tone="neutral">{unit}</AccentPill>
+        {!hideUnitPill && unit ? <AccentPill tone="neutral">{unit}</AccentPill> : null}
       </div>
 
       <div className="mt-4 flex flex-wrap gap-2">
@@ -288,18 +336,25 @@ function StackedColumnChart({
                 <div className="flex h-full w-8 flex-col-reverse overflow-hidden rounded-full bg-white/[0.05] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.04)]">
                   {item.segments.map((segment) => (
                     <div
-                      className="w-full"
+                      className="group/segment relative w-full"
                       key={segment.key}
+                      title={segment.tooltip}
                       style={{
                         height: `${Math.max((segment.value / maxTotal) * 100, segment.value > 0 ? 4 : 0)}%`,
                         backgroundColor: segment.color,
                       }}
-                    />
+                    >
+                      {segment.tooltip ? (
+                        <div className="pointer-events-none absolute left-1/2 top-1/2 z-10 hidden -translate-x-1/2 -translate-y-1/2 whitespace-nowrap rounded-full border border-white/10 bg-slate-950/92 px-2.5 py-1 text-[11px] text-white shadow-2xl group-hover/segment:block">
+                          {segment.tooltip}
+                        </div>
+                      ) : null}
+                    </div>
                   ))}
                 </div>
               </div>
               <div className="text-center">
-                <div className="text-sm font-medium text-white">{formatNumber(total, total < 10 ? 1 : 0)}</div>
+                <div className="text-sm font-medium text-white">{formatTotal(total)}</div>
                 <div className="mt-1 text-xs text-slate-500">{item.label}</div>
               </div>
             </div>
@@ -371,7 +426,7 @@ function MultiLineChart({
 }: {
   title: string
   description: string
-  lines: Array<{ label: string; color: string; data: NumericPoint[] }>
+  lines: Array<{ label: string; color: string; data: NumericPoint[]; strokeDasharray?: string }>
 }) {
   const availableLines = lines.filter((line) => line.data.length > 1)
   const bounds = getChartBounds(availableLines.map((line) => line.data))
@@ -405,6 +460,7 @@ function MultiLineChart({
                 key={line.label}
                 points={buildLinePath(line.data, bounds.min, bounds.max)}
                 stroke={line.color}
+                strokeDasharray={line.strokeDasharray}
                 strokeLinecap="round"
                 strokeLinejoin="round"
                 strokeWidth="2"
@@ -573,10 +629,10 @@ function buildFieldEntries(metric: EnrichedMetric | null): FieldEntry[] {
   ]
 }
 
-export function DataExplorer({ metricTotal, metrics, activityTotal, activities, initialAnalysisReport, trainingGoal }: DataExplorerProps) {
+export function DataExplorer({ metricTotal, metrics, activityTotal, activities, initialAnalysisReport }: DataExplorerProps) {
   const [metricsState, setMetricsState] = useState(metrics)
   const [activitiesState, setActivitiesState] = useState(activities)
-  const [analysisReport, setAnalysisReport] = useState(initialAnalysisReport)
+  const analysisReport = initialAnalysisReport
   const [metricsLoading, setMetricsLoading] = useState(false)
   const [activitiesLoading, setActivitiesLoading] = useState(false)
   const [selectedDate, setSelectedDate] = useState(metrics[0]?.date ?? "")
@@ -652,10 +708,33 @@ export function DataExplorer({ metricTotal, metrics, activityTotal, activities, 
   const metricsAsc = useMemo(() => [...enrichedMetrics].sort((a, b) => a.date.localeCompare(b.date)), [enrichedMetrics])
   const recentMetrics = useMemo(() => metricsAsc.slice(-10), [metricsAsc])
   const last7Metrics = useMemo(() => metricsAsc.slice(-7), [metricsAsc])
-  const previous7Metrics = useMemo(() => metricsAsc.slice(-14, -7), [metricsAsc])
+  const hrv30Metrics = useMemo(() => metricsAsc.slice(-30), [metricsAsc])
+  const previous30Metrics = useMemo(() => metricsAsc.slice(-60, -30), [metricsAsc])
   const effectiveSelectedDate = selectedDate || metricsState[0]?.date || ""
   const selectedMetric = enrichedMetrics.find((metric) => metric.date === effectiveSelectedDate) ?? enrichedMetrics[0] ?? null
-  const latestActivities = activitiesState.slice(0, Math.max(activitiesState.length, 12))
+  const latestActivities = activitiesState.slice(0, 12)
+  const latestMetric = recentMetrics[recentMetrics.length - 1] ?? null
+
+  const latestActivitySummary = useMemo(() => {
+    const latestActivity = latestActivities[0]
+    if (!latestActivity) {
+      return null
+    }
+
+    const values = getActivityDisplayValues(latestActivity.raw)
+    const startedAt = parseActivityDateTime(values.startedAtGmt, values.startedAtLocal)
+    const endedAt =
+      parseActivityDateTime(values.endedAtGmt, values.endedAtLocal) ??
+      (startedAt && latestActivity.duration ? new Date(startedAt.getTime() + latestActivity.duration * 1000) : null)
+
+    return {
+      ...latestActivity,
+      ...values,
+      startedAtLabel: formatActivityDateTimeLabel(startedAt),
+      endedAtLabel: formatActivityDateTimeLabel(endedAt),
+      typeLabel: formatActivityType(latestActivity.type),
+    }
+  }, [latestActivities])
 
   const heartRateSeries = selectedMetric ? getHeartRateSeries(selectedMetric.raw) : []
   const stressSeries = selectedMetric ? getStressSeries(selectedMetric.raw) : []
@@ -766,10 +845,18 @@ export function DataExplorer({ metricTotal, metrics, activityTotal, activities, 
     [recentMetrics]
   )
 
-  const sleepAverage = average(last7Metrics.map((metric) => toSleepHours(metric.sleepDurationHours)))
+  const hrv30Series = useMemo<NumericPoint[]>(
+    () =>
+      hrv30Metrics
+        .map((metric) => (metric.hrv != null ? { label: metric.date.slice(5), value: metric.hrv } : null))
+        .filter((item): item is NumericPoint => item !== null),
+    [hrv30Metrics]
+  )
+  const hrvTrendSeries = useMemo(() => buildTrendSeries(hrv30Series), [hrv30Series])
+  const hrvChartBounds = useMemo(() => getChartBounds([hrv30Series, hrvTrendSeries]), [hrv30Series, hrvTrendSeries])
   const hrvAverage = average(last7Metrics.map((metric) => metric.hrv))
-  const readinessAverage = average(last7Metrics.map((metric) => metric.trainingReadiness))
-  const bodyBatteryRangeAverage = average(last7Metrics.map((metric) => (metric.bodyBatteryHigh != null && metric.bodyBatteryLow != null ? metric.bodyBatteryHigh - metric.bodyBatteryLow : null)))
+  const hrv30Average = average(hrv30Metrics.map((metric) => metric.hrv))
+  const previous30HrvAverage = average(previous30Metrics.map((metric) => metric.hrv))
   const restingHrAverage = average(last7Metrics.map((metric) => metric.restingHr))
   const stressAverage = average(last7Metrics.map((metric) => metric.stress))
   const spo2Average = average(last7Metrics.map((metric) => metric.bloodOxygen))
@@ -815,36 +902,47 @@ export function DataExplorer({ metricTotal, metrics, activityTotal, activities, 
 
   return (
     <>
-      <section className="grid gap-4 xl:grid-cols-[1.18fr_0.82fr]">
-        <AITrainingReport initialReport={analysisReport} onReportChange={setAnalysisReport} trainingGoal={trainingGoal} />
+      <section className="grid gap-4 xl:grid-cols-[1.45fr_0.55fr]">
+        {latestActivitySummary ? (
+          <SurfaceCard className="p-6">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <div className="text-[11px] uppercase tracking-[0.24em] text-slate-400">Latest Activity</div>
+                <div className="mt-3 font-[family:var(--font-display)] text-3xl font-semibold tracking-tight text-white">{latestActivitySummary.name}</div>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <AccentPill tone="cyan">{latestActivitySummary.typeLabel}</AccentPill>
+                  <AccentPill tone="neutral">{latestActivitySummary.date}</AccentPill>
+                  <AccentPill tone="neutral">{formatDuration(latestActivitySummary.duration)}</AccentPill>
+                  <AccentPill tone="neutral">{formatDistance(latestActivitySummary.distance)}</AccentPill>
+                </div>
+              </div>
+              <div className="rounded-[1.35rem] border border-cyan-400/16 bg-cyan-400/8 px-4 py-3 text-right">
+                <div className="text-xs uppercase tracking-[0.18em] text-cyan-200/72">训练刺激</div>
+                <div className="mt-2 text-3xl font-semibold text-white">{formatNumber(latestActivitySummary.trainingLoad)}</div>
+                <div className="mt-1 text-sm text-slate-300">Training Load</div>
+              </div>
+            </div>
 
-        <div className="grid gap-4 content-start">
-          <RecoveryCountdownCard className="max-w-none" report={analysisReport} title="Ready To Train" />
-          <SurfaceCard className="p-5">
-            <SectionHeader
-              description="这里只保留当前分析范围和样本量，导航与账号状态统一收进顶部 Topbar。"
-              eyebrow="Data Scope"
-              title="分析范围"
-            />
-
-            <div className="mt-4 grid gap-3 sm:grid-cols-2">
-              <MetricTile detail="当前已载入前端" label="Daily 样本" value={String(metricsState.length)} />
-              <MetricTile detail="当前已载入前端" label="活动样本" value={String(activitiesState.length)} />
-              <MetricTile detail="当前分析日期" label="选中日期" value={selectedMetric?.date ?? "--"} />
-              <MetricTile detail="当前 AI 分析口径" label="训练目标" value={trainingGoal.trim() ? "已设置" : "未设置"} />
+            <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+              <MetricTile detail="上海时间" label="开始时间" value={latestActivitySummary.startedAtLabel} />
+              <MetricTile detail="上海时间" label="结束时间" value={latestActivitySummary.endedAtLabel} />
+              <MetricTile detail="最近一次活动均值" label="平均心率" value={formatNumber(latestActivitySummary.averageHeartRate, 0, " bpm")} />
+              <MetricTile detail="峰值响应" label="最大心率" value={formatNumber(latestActivitySummary.maxHeartRate, 0, " bpm")} />
+              <MetricTile detail="有功率计时优先显示" label="AP" value={formatNumber(latestActivitySummary.averagePower, 0, " W")} />
+              <MetricTile detail="有功率计时优先显示" label="NP" value={formatNumber(latestActivitySummary.normalizedPower, 0, " W")} />
+              <MetricTile detail="骑行优先，跑步会显示步频" label="平均踏频" value={formatNumber(latestActivitySummary.averageCadence, 0, " rpm")} />
+              <MetricTile detail="有氧 / 无氧" label="训练效果" value={`${formatNumber(latestActivitySummary.aerobicTrainingEffect, 1)} / ${formatNumber(latestActivitySummary.anaerobicTrainingEffect, 1)}`} />
             </div>
           </SurfaceCard>
+        ) : (
+          <SurfaceCard className="p-6">
+            <div className="text-[11px] uppercase tracking-[0.24em] text-slate-400">Latest Activity</div>
+            <div className="mt-3 text-xl font-semibold text-white">还没有活动记录</div>
+            <div className="mt-2 text-sm text-slate-400">同步一次 Garmin 活动后，这里会放大展示最近一次训练的关键指标。</div>
+          </SurfaceCard>
+        )}
 
-          {latestActivities[0] ? (
-            <SurfaceCard className="p-5">
-              <div className="text-[11px] uppercase tracking-[0.24em] text-slate-400">Latest Activity</div>
-              <div className="mt-3 text-xl font-semibold text-white">{latestActivities[0].name}</div>
-              <div className="mt-2 text-sm text-slate-300">
-                {latestActivities[0].date} · {formatDuration(latestActivities[0].duration)} · {formatDistance(latestActivities[0].distance)}
-              </div>
-            </SurfaceCard>
-          ) : null}
-        </div>
+        <RecoveryCountdownCard className="max-w-none" report={analysisReport} title="Ready To Train" />
       </section>
 
       <section className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
@@ -855,9 +953,9 @@ export function DataExplorer({ metricTotal, metrics, activityTotal, activities, 
               查看同步状态
             </Link>
           }
-          description="把睡眠结构、恢复信号和当日建议聚合在一屏内，先判断恢复，再决定怎么练。"
-          eyebrow="Recovery Overview"
-          title="恢复总览"
+          description="先看近 10 天睡眠结构，再看近 30 天 HRV 趋势，恢复判断集中在这一屏完成。"
+          eyebrow="Sleep & HRV"
+          title="睡眠与恢复"
         />
 
         <div className="mt-4 grid gap-4">
@@ -865,13 +963,14 @@ export function DataExplorer({ metricTotal, metrics, activityTotal, activities, 
             data={sleepCompositionData.map((item) => ({
               label: item.label,
               segments: [
-                { key: "deep", value: item.deep, color: "#38bdf8" },
-                { key: "rem", value: item.rem, color: "#8b5cf6" },
-                { key: "light", value: item.light, color: "#14b8a6" },
-                { key: "awake", value: item.awake, color: "#f97316" },
+                { key: "deep", value: item.deep, color: "#38bdf8", tooltip: `${item.label}：深睡 ${formatCompactHours(item.deep)}` },
+                { key: "rem", value: item.rem, color: "#8b5cf6", tooltip: `${item.label}：REM ${formatCompactHours(item.rem)}` },
+                { key: "light", value: item.light, color: "#14b8a6", tooltip: `${item.label}：浅睡 ${formatCompactHours(item.light)}` },
+                { key: "awake", value: item.awake, color: "#f97316", tooltip: `${item.label}：清醒 ${formatCompactHours(item.awake)}` },
               ],
             }))}
-            description="把深睡、REM、浅睡和清醒时间堆叠在一根柱里，不再拆成 4 张折线图。"
+            formatTotal={formatCompactHours}
+            hideUnitPill
             segments={[
               { key: "deep", label: "深睡", color: "#38bdf8" },
               { key: "rem", label: "REM", color: "#8b5cf6" },
@@ -879,30 +978,50 @@ export function DataExplorer({ metricTotal, metrics, activityTotal, activities, 
               { key: "awake", label: "清醒", color: "#f97316" },
             ]}
             title="睡眠结构"
-            unit="hours"
           />
 
           <SubtleCard className="p-4">
-            <h3 className="text-xl font-semibold text-white">恢复信号</h3>
-            <p className="mt-2 text-sm leading-6 text-slate-400">重点只看睡眠、HRV、训练准备度和电量振幅是否同步走强。</p>
-            <div className="mt-4 grid gap-3">
-              <VitalSignalRow label="睡眠时长" averageValue={sleepAverage} current={toSleepHours(recentMetrics[recentMetrics.length - 1]?.sleepDurationHours)} suffix="h" tone="cyan" />
-              <VitalSignalRow label="HRV" averageValue={hrvAverage} current={recentMetrics[recentMetrics.length - 1]?.hrv} suffix="ms" tone="violet" />
-              <VitalSignalRow label="训练准备度" averageValue={readinessAverage} current={recentMetrics[recentMetrics.length - 1]?.trainingReadiness} suffix="" tone="emerald" />
-              <VitalSignalRow label="Body Battery 振幅" averageValue={bodyBatteryRangeAverage} current={recentMetrics[recentMetrics.length - 1]?.bodyBatteryHigh != null && recentMetrics[recentMetrics.length - 1]?.bodyBatteryLow != null ? recentMetrics[recentMetrics.length - 1]!.bodyBatteryHigh! - recentMetrics[recentMetrics.length - 1]!.bodyBatteryLow! : null} suffix="" tone="amber" />
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h3 className="text-xl font-semibold text-white">HRV 分析</h3>
+                <p className="mt-2 text-sm leading-6 text-slate-400">最新值、近 7 天均值和近 30 天趋势线放在一起，直接看恢复是否走弱。</p>
+              </div>
+              <AccentPill tone="violet">30 天</AccentPill>
             </div>
-            <div className="mt-4 grid gap-3 md:grid-cols-2">
-              <MetricTile
-                detail={`较前 7 天 ${formatDelta(average(last7Metrics.map((metric) => metric.sleepScore)), average(previous7Metrics.map((metric) => metric.sleepScore)))}`}
-                label="近 7 天睡眠评分"
-                value={formatNumber(average(last7Metrics.map((metric) => metric.sleepScore)))}
-              />
-              <MetricTile
-                detail={`较前 7 天 ${formatDelta(average(last7Metrics.map((metric) => metric.hrv)), average(previous7Metrics.map((metric) => metric.hrv)), 0, " ms")}`}
-                label="近 7 天 HRV"
-                value={formatNumber(average(last7Metrics.map((metric) => metric.hrv)), 0, " ms")}
-              />
+
+            <div className="mt-4 grid gap-3 md:grid-cols-3">
+              <MetricTile detail={latestMetric?.date ?? "最新一日"} label="最新 HRV" value={formatNumber(latestMetric?.hrv, 0, " ms")} />
+              <MetricTile detail={`较前 30 天 ${formatDelta(hrv30Average, previous30HrvAverage, 0, " ms")}`} label="近 30 天均值" value={formatNumber(hrv30Average, 0, " ms")} />
+              <MetricTile detail={`较近 7 天 ${formatDelta(latestMetric?.hrv, hrvAverage, 0, " ms")}`} label="近 7 天均值" value={formatNumber(hrvAverage, 0, " ms")} />
             </div>
+
+            {hrv30Series.length > 1 ? (
+              <>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs text-slate-300">
+                    <span className="h-2.5 w-2.5 rounded-full bg-violet-400" />
+                    HRV
+                  </span>
+                  <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs text-slate-300">
+                    <span className="h-0.5 w-4 bg-cyan-300" />
+                    趋势线
+                  </span>
+                </div>
+                <svg className="mt-5 block h-48 w-full" preserveAspectRatio="none" viewBox="0 0 100 100">
+                  <path d="M0,76 100,76" fill="none" stroke="rgba(148,163,184,0.14)" strokeDasharray="4 4" />
+                  <path d="M0,48 100,48" fill="none" stroke="rgba(148,163,184,0.1)" strokeDasharray="4 4" />
+                  <polyline fill="none" points={buildLinePath(hrv30Series, hrvChartBounds.min, hrvChartBounds.max)} stroke="#8b5cf6" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
+                  <polyline fill="none" points={buildLinePath(hrvTrendSeries, hrvChartBounds.min, hrvChartBounds.max)} stroke="#67e8f9" strokeDasharray="5 4" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
+                </svg>
+                <div className="mt-2 flex items-center justify-between text-xs text-slate-500">
+                  <span>{hrv30Series[0]?.label}</span>
+                  <span>{hrv30Series[Math.floor(hrv30Series.length / 2)]?.label}</span>
+                  <span>{hrv30Series[hrv30Series.length - 1]?.label}</span>
+                </div>
+              </>
+            ) : (
+              <div className="mt-6 rounded-3xl bg-white/[0.05] px-4 py-8 text-center text-sm text-slate-400">当前 HRV 数据点不足，暂时无法绘制 30 天趋势。</div>
+            )}
           </SubtleCard>
         </div>
       </SurfaceCard>
@@ -918,10 +1037,10 @@ export function DataExplorer({ metricTotal, metrics, activityTotal, activities, 
         <SurfaceCard className="p-5">
           <SectionHeader description="把心率、压力、血氧和呼吸都改成信号条，快速判断今天是否偏离常态。" eyebrow="Vitals" title="生命体征速览" />
           <div className="mt-4 grid gap-3">
-            <VitalSignalRow averageValue={restingHrAverage} current={recentMetrics[recentMetrics.length - 1]?.restingHr} invert label="静息心率" suffix="bpm" tone="amber" />
-            <VitalSignalRow averageValue={stressAverage} current={recentMetrics[recentMetrics.length - 1]?.stress} invert label="压力" suffix="" tone="amber" />
-            <VitalSignalRow averageValue={spo2Average} current={recentMetrics[recentMetrics.length - 1]?.bloodOxygen} label="血氧" suffix="%" tone="emerald" />
-            <VitalSignalRow averageValue={respirationAverage} current={recentMetrics[recentMetrics.length - 1]?.respiration} invert label="呼吸频率" suffix="brpm" tone="violet" />
+            <VitalSignalRow averageValue={restingHrAverage} current={latestMetric?.restingHr} invert label="静息心率" suffix="bpm" tone="amber" />
+            <VitalSignalRow averageValue={stressAverage} current={latestMetric?.stress} invert label="压力" suffix="" tone="amber" />
+            <VitalSignalRow averageValue={spo2Average} current={latestMetric?.bloodOxygen} label="血氧" suffix="%" tone="emerald" />
+            <VitalSignalRow averageValue={respirationAverage} current={latestMetric?.respiration} invert label="呼吸频率" suffix="brpm" tone="violet" />
           </div>
         </SurfaceCard>
         </div>

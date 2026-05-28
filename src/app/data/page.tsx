@@ -26,7 +26,6 @@ export default async function DataPage() {
     where: { id: session.user.id },
     select: {
       id: true,
-      trainingGoal: true,
       _count: {
         select: {
           metrics: true,
@@ -101,7 +100,6 @@ export default async function DataPage() {
           raw: metric.raw,
         }))}
         metricTotal={user._count.metrics}
-        trainingGoal={user.trainingGoal ?? ""}
       />
     </AppPage>
   )

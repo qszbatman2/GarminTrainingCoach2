@@ -512,6 +512,38 @@ export function getMetricDisplayValues(raw: unknown) {
 
 export function getActivityDisplayValues(raw: unknown) {
   return {
+    startedAtGmt: firstValue<string>(
+      [
+        "summaryDTO.startTimeGMT",
+        "details.startTimeGMT",
+        "startTimeGMT",
+      ],
+      raw
+    ),
+    startedAtLocal: firstValue<string>(
+      [
+        "summaryDTO.startTimeLocal",
+        "details.startTimeLocal",
+        "startTimeLocal",
+      ],
+      raw
+    ),
+    endedAtGmt: firstValue<string>(
+      [
+        "summaryDTO.endTimeGMT",
+        "details.endTimeGMT",
+        "endTimeGMT",
+      ],
+      raw
+    ),
+    endedAtLocal: firstValue<string>(
+      [
+        "summaryDTO.endTimeLocal",
+        "details.endTimeLocal",
+        "endTimeLocal",
+      ],
+      raw
+    ),
     averageHeartRate: firstNumber(
       [
         "summaryDTO.averageHR",
@@ -531,6 +563,38 @@ export function getActivityDisplayValues(raw: unknown) {
         "maxHR",
         "maxHeartRate",
         "summary.maxHeartRate",
+      ],
+      raw
+    ),
+    averageCadence: firstNumber(
+      [
+        "summaryDTO.averageBikeCadence",
+        "summaryDTO.averageCadence",
+        "summaryDTO.averageRunningCadenceInStepsPerMinute",
+        "details.averageCadence",
+        "details.avgCadence",
+        "averageCadence",
+        "averageBikeCadence",
+      ],
+      raw
+    ),
+    averagePower: firstNumber(
+      [
+        "summaryDTO.averagePower",
+        "details.averagePower",
+        "details.avgPower",
+        "averagePower",
+      ],
+      raw
+    ),
+    normalizedPower: firstNumber(
+      [
+        "summaryDTO.normalizedPower",
+        "summaryDTO.normPower",
+        "details.normalizedPower",
+        "details.normPower",
+        "normalizedPower",
+        "normPower",
       ],
       raw
     ),
