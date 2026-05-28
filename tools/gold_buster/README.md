@@ -58,6 +58,38 @@ Available endpoints:
 - `POST /record-commit`
 - `GET /health`
 
+Minimal MCP bridge for turn logging:
+
+```powershell
+python -m tools.gold_buster.mcp_server --recorder-url http://127.0.0.1:8765
+```
+
+Recommended MCP registration shape:
+
+```json
+{
+  "name": "gold-buster-recorder",
+  "command": "python",
+  "args": [
+    "-m",
+    "tools.gold_buster.mcp_server",
+    "--recorder-url",
+    "http://127.0.0.1:8765"
+  ],
+  "cwd": "c:\\AI CODING\\P22-GarminTrainingCoach2\\web"
+}
+```
+
+`record_turn` should only send:
+
+- `session_id`
+- `intent_hint`
+- `user_text`
+- `assistant_text`
+- `active_files`
+
+Do not send hidden prompts, huge tool outputs, or the entire transcript.
+
 ## Outputs
 
 All new ledgers and reports are stored under `reports/gold_buster/`.

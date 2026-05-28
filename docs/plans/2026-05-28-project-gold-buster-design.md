@@ -53,3 +53,10 @@ Project Gold-Buster audits Trae Solo work with a low-cost ledger model. It recor
 - Per-commit logging: local file append only.
 - Report generation: local scoring across all requirements.
 - Model calls: top `N` suspicious requirements only, configurable by CLI flag.
+
+## MCP Bridge
+
+- Add a minimal stdio MCP server dedicated to `record_turn`.
+- The MCP server must not estimate risk or call any model.
+- It only forwards sanitized turn payloads to the existing local recorder HTTP service.
+- Failure mode is soft: if the recorder service is unavailable, the MCP tool returns a compact error and never retries aggressively.
