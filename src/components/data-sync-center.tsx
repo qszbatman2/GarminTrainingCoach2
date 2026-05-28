@@ -259,6 +259,18 @@ export function DataSyncCenter({
 
     return [...leading, ...dayCells, ...trailing]
   }, [currentCalendar])
+  const calendarWeekCount = useMemo(() => Math.max(Math.ceil(heatmapCells.length / 7), 1), [heatmapCells])
+  const calendarCellSize = useMemo(() => {
+    if (calendarWeekCount <= 5) {
+      return 24
+    }
+    if (calendarWeekCount === 6) {
+      return 21
+    }
+    return 18
+  }, [calendarWeekCount])
+  const calendarCellGap = calendarCellSize >= 24 ? 10 : calendarCellSize >= 21 ? 8 : 6
+  const calendarLabelWidth = calendarCellSize >= 24 ? 18 : 16
 
   useEffect(() => {
     if (!backfillJob || !["pending", "running"].includes(backfillJob.status)) {
@@ -504,12 +516,15 @@ export function DataSyncCenter({
               </div>
             </div>
 
-            <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_280px]">
-              <div className="rounded-[1.5rem] border border-white/6 bg-black/10 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
-                <div className="grid grid-cols-[14px_minmax(0,1fr)] items-start gap-3">
-                  <div className="grid grid-rows-7 gap-2 pt-[1px] text-[10px] uppercase tracking-[0.18em] text-slate-600">
+            <div className="grid gap-4 xl:grid-cols-[max-content_280px] xl:justify-between">
+              <div className="w-fit max-w-full rounded-[1.5rem] border border-white/6 bg-black/10 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
+                <div className="grid items-start gap-3" style={{ gridTemplateColumns: `${calendarLabelWidth}px minmax(0, max-content)` }}>
+                  <div
+                    className="grid grid-rows-7 pt-[1px] text-[10px] uppercase tracking-[0.18em] text-slate-600"
+                    style={{ rowGap: `${calendarCellGap}px` }}
+                  >
                     {["一", "", "三", "", "五", "", "日"].map((label, index) => (
-                      <span className="flex h-[14px] items-center justify-center" key={`${label}-${index}`}>
+                      <span className="flex items-center justify-center" key={`${label}-${index}`} style={{ height: `${calendarCellSize}px` }}>
                         {label}
                       </span>
                     ))}
@@ -517,12 +532,22 @@ export function DataSyncCenter({
 
                   <div className="overflow-x-auto pb-1">
                     <div
-                      className="grid min-w-max grid-flow-col grid-rows-7 gap-2"
-                      style={{ gridTemplateRows: "repeat(7, 14px)", gridAutoColumns: "14px" }}
+                      className="grid min-w-max grid-flow-col grid-rows-7"
+                      style={{
+                        gridTemplateRows: `repeat(7, ${calendarCellSize}px)`,
+                        gridAutoColumns: `${calendarCellSize}px`,
+                        gap: `${calendarCellGap}px`,
+                      }}
                     >
                       {heatmapCells.map((cell) => {
                         if (!cell.day) {
-                          return <div className="h-[14px] w-[14px] rounded-[4px]" key={cell.key} />
+                          return (
+                            <div
+                              className="rounded-[6px]"
+                              key={cell.key}
+                              style={{ height: `${calendarCellSize}px`, width: `${calendarCellSize}px` }}
+                            />
+                          )
                         }
 
                         const day = cell.day
@@ -532,11 +557,12 @@ export function DataSyncCenter({
                           <button
                             aria-label={`${day.date} ${CALENDAR_STATUS_META[day.status].label}`}
                             aria-pressed={isSelected}
-                            className={`h-[14px] w-[14px] rounded-[4px] border transition duration-150 ${CALENDAR_STATUS_META[day.status].squareClassName} ${
-                              isSelected ? "scale-[1.12] border-cyan-200/60 ring-2 ring-cyan-300/45" : ""
+                            className={`rounded-[6px] border transition duration-150 ${CALENDAR_STATUS_META[day.status].squareClassName} ${
+                              isSelected ? "scale-[1.08] border-cyan-200/60 ring-2 ring-cyan-300/45" : ""
                             } ${day.isToday && !isSelected ? "ring-1 ring-white/20" : ""}`}
                             key={cell.key}
                             onClick={() => setSelectedCalendarDate(day.date)}
+                            style={{ height: `${calendarCellSize}px`, width: `${calendarCellSize}px` }}
                             title={`${day.date} · ${CALENDAR_STATUS_META[day.status].label}`}
                             type="button"
                           />
