@@ -2,6 +2,7 @@ import { Prisma } from "@prisma/client"
 
 import prisma from "@/lib/prisma"
 import { formatUpdatedFieldsSummary, getDateKey, mergeUpdatedFields, syncGarminDateForUser } from "@/lib/garmin-sync"
+import { addShanghaiDays, getShanghaiDateKeyWithOffset, parseDateKeyAsUtc } from "@/lib/shanghai-time"
 
 const BACKFILL_SECRET = () => process.env.CRON_SECRET ?? process.env.AUTH_SECRET ?? ""
 const JOB_CHUNK_SIZE = 4
@@ -33,14 +34,11 @@ function buildJobMessage(base: string, updatedFields: string[]) {
 }
 
 export function getBackfillDateRange(days: number) {
-  const yesterday = new Date()
-  yesterday.setDate(yesterday.getDate() - 1)
-  yesterday.setHours(0, 0, 0, 0)
+  const yesterday = parseDateKeyAsUtc(getShanghaiDateKeyWithOffset(-1))
 
   const dates: string[] = []
   for (let offset = days - 1; offset >= 0; offset -= 1) {
-    const current = new Date(yesterday)
-    current.setDate(yesterday.getDate() - offset)
+    const current = addShanghaiDays(yesterday, -offset)
     dates.push(getDateKey(current))
   }
 

@@ -1,4 +1,13 @@
 import { getActivityDisplayValues, getMetricDisplayValues } from "@/lib/garmin-data"
+import {
+  addShanghaiDays,
+  formatShanghaiDateKey,
+  getShanghaiDateParts,
+  getShanghaiDayRange,
+  getShanghaiDayStart,
+  getShanghaiMonthStart,
+  parseGarminDateTime,
+} from "@/lib/shanghai-time"
 
 export type DailyMetricInput = {
   id: string
@@ -264,7 +273,7 @@ export type TrainingAnalysisPayload = {
 }
 
 function toDateKey(date: Date) {
-  return date.toISOString().slice(0, 10)
+  return formatShanghaiDateKey(date)
 }
 
 function round(value: number | null, digits = 1) {
@@ -312,23 +321,6 @@ function clamp(value: number, min = 0, max = 100) {
   return Math.min(Math.max(value, min), max)
 }
 
-function parseGarminDateTime(value: unknown, mode: "utc" | "shanghai") {
-  if (typeof value !== "string") {
-    return null
-  }
-
-  const trimmed = value.trim()
-  const match = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?$/)
-  if (match) {
-    const [, year, month, day, hour, minute, second = "00"] = match
-    const utcMillis = Date.UTC(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute), Number(second))
-    return new Date(mode === "utc" ? utcMillis : utcMillis - 8 * 60 * 60 * 1000)
-  }
-
-  const parsed = new Date(trimmed)
-  return Number.isNaN(parsed.getTime()) ? null : parsed
-}
-
 function getActivityStartDate(activity: ActivityInput) {
   const raw = asRecord(activity.raw)
 
@@ -344,41 +336,36 @@ function ratio(numerator: number | null, denominator: number | null, digits = 2)
 }
 
 function getWindowItems<T extends { date: Date }>(items: T[], referenceDate: Date, days: number) {
-  const end = referenceDate.getTime()
-  const start = end - (days - 1) * 24 * 60 * 60 * 1000
-  return items.filter((item) => item.date.getTime() >= start && item.date.getTime() <= end)
+  const start = getShanghaiDayStart(addShanghaiDays(referenceDate, -(days - 1))).getTime()
+  const endExclusive = getShanghaiDayRange(referenceDate).endExclusive.getTime()
+  return items.filter((item) => item.date.getTime() >= start && item.date.getTime() < endExclusive)
 }
 
 function startOfDay(date: Date) {
-  const value = new Date(date)
-  value.setHours(0, 0, 0, 0)
-  return value
+  return getShanghaiDayStart(date)
 }
 
 function startOfWeek(date: Date) {
   const value = startOfDay(date)
-  const day = value.getDay()
+  const day = getShanghaiDateParts(value).weekday
   const offset = day === 0 ? 6 : day - 1
-  value.setDate(value.getDate() - offset)
-  return value
+  return addShanghaiDays(value, -offset)
 }
 
 function startOfMonth(date: Date) {
-  const value = startOfDay(date)
-  value.setDate(1)
-  return value
+  return getShanghaiMonthStart(date)
 }
 
 function getRangeItems<T extends { date: Date }>(items: T[], startDate: Date, endDate: Date) {
-  const start = startDate.getTime()
-  const end = endDate.getTime()
-  return items.filter((item) => item.date.getTime() >= start && item.date.getTime() <= end)
+  const start = getShanghaiDayStart(startDate).getTime()
+  const endExclusive = getShanghaiDayRange(endDate).endExclusive.getTime()
+  return items.filter((item) => item.date.getTime() >= start && item.date.getTime() < endExclusive)
 }
 
 function getWindowBefore<T extends { date: Date }>(items: T[], referenceDate: Date, days: number) {
-  const end = referenceDate.getTime() - 1
-  const start = end - (days - 1) * 24 * 60 * 60 * 1000
-  return items.filter((item) => item.date.getTime() >= start && item.date.getTime() <= end)
+  const start = getShanghaiDayStart(addShanghaiDays(referenceDate, -days)).getTime()
+  const endExclusive = getShanghaiDayStart(referenceDate).getTime()
+  return items.filter((item) => item.date.getTime() >= start && item.date.getTime() < endExclusive)
 }
 
 function normalizeHoursFromSeconds(value: number | null) {
@@ -727,7 +714,7 @@ function getHoursToBaseline(metrics: EnrichedMetric[], startDate: Date, restingB
 }
 
 function getDaysDiff(later: Date, earlier: Date) {
-  return Math.max(0, Math.round((later.getTime() - earlier.getTime()) / (1000 * 60 * 60 * 24)))
+  return Math.max(0, Math.round((getShanghaiDayStart(later).getTime() - getShanghaiDayStart(earlier).getTime()) / (1000 * 60 * 60 * 24)))
 }
 
 function getElapsedDaysInclusive(startDate: Date, endDate: Date) {
@@ -759,7 +746,7 @@ function getConsecutiveRestDays(referenceDate: Date, activities: EnrichedActivit
 
   const activityDays = new Set(activities.map((activity) => toDateKey(activity.date)))
   let restDays = 0
-  const cursor = new Date(referenceDate)
+  let cursor = getShanghaiDayStart(referenceDate)
 
   while (true) {
     const dayKey = toDateKey(cursor)
@@ -768,7 +755,7 @@ function getConsecutiveRestDays(referenceDate: Date, activities: EnrichedActivit
     }
 
     restDays += 1
-    cursor.setDate(cursor.getDate() - 1)
+    cursor = addShanghaiDays(cursor, -1)
     if (restDays > 30) {
       return restDays
     }

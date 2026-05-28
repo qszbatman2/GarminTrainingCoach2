@@ -4,6 +4,7 @@ import { DataExplorer } from "@/components/data-explorer"
 import { AppPage } from "@/components/design-system"
 import { getLatestSavedAnalysisReport } from "@/lib/analysis-report"
 import prisma from "@/lib/prisma"
+import { formatShanghaiDateKey } from "@/lib/shanghai-time"
 
 const INITIAL_METRICS_LIMIT = 21
 const INITIAL_ACTIVITIES_LIMIT = 12
@@ -80,13 +81,13 @@ export default async function DataPage() {
           type: activity.type,
           distance: activity.distance,
           duration: activity.duration,
-          date: activity.date.toISOString().slice(0, 10),
+          date: formatShanghaiDateKey(activity.date),
           raw: activity.raw,
         }))}
         initialAnalysisReport={initialAnalysisReport}
         metrics={user.metrics.map((metric) => ({
           id: metric.id,
-          date: metric.date.toISOString().slice(0, 10),
+          date: formatShanghaiDateKey(metric.date),
           sleepScore: metric.sleepScore,
           hrv: metric.hrv,
           restingHr: metric.restingHr,

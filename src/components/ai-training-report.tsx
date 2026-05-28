@@ -3,6 +3,7 @@
 import { useState } from "react"
 
 import { AccentPill, SubtleCard, SurfaceCard } from "@/components/design-system"
+import { formatShanghaiDateTime } from "@/lib/shanghai-time"
 import type { TrainingAnalysisPayload } from "@/lib/training-analysis"
 
 type ApiResult = {
@@ -38,13 +39,7 @@ function weeklyTone(value: TrainingAnalysisPayload["analysis"]["weeklyLoadAssess
 }
 
 function formatTime(value?: string) {
-  if (!value) {
-    return "--"
-  }
-
-  return new Date(value).toLocaleString("zh-CN", {
-    hour12: false,
-  })
+  return formatShanghaiDateTime(value)
 }
 
 export function AITrainingReport({

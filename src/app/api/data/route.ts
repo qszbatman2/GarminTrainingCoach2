@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 
 import { auth } from "@/auth"
 import prisma from "@/lib/prisma"
+import { formatShanghaiDateKey } from "@/lib/shanghai-time"
 
 const DEFAULT_METRICS_LIMIT = 21
 const DEFAULT_ACTIVITIES_LIMIT = 12
@@ -78,7 +79,7 @@ export async function GET(request: Request) {
     return NextResponse.json({
       metrics: metrics.map((metric) => ({
         id: metric.id,
-        date: metric.date.toISOString().slice(0, 10),
+        date: formatShanghaiDateKey(metric.date),
         sleepScore: metric.sleepScore,
         hrv: metric.hrv,
         restingHr: metric.restingHr,
@@ -92,7 +93,7 @@ export async function GET(request: Request) {
         type: activity.type,
         distance: activity.distance,
         duration: activity.duration,
-        date: activity.date.toISOString().slice(0, 10),
+        date: formatShanghaiDateKey(activity.date),
         raw: activity.raw,
       })),
       totals: {

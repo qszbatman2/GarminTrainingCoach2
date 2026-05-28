@@ -7,6 +7,7 @@ import { AITrainingReport } from "@/components/ai-training-report"
 import { RecoveryCountdownCard } from "@/components/recovery-countdown-card"
 import { AccentPill, AppPage, SurfaceCard } from "@/components/design-system"
 import type { TrainingAnalysisPayload } from "@/lib/training-analysis"
+import { formatShanghaiDateTime } from "@/lib/shanghai-time"
 
 type DashboardShellProps = {
   userName: string
@@ -18,13 +19,7 @@ type DashboardShellProps = {
 }
 
 function formatDateTime(value?: string | null) {
-  if (!value) {
-    return "--"
-  }
-
-  return new Date(value).toLocaleString("zh-CN", {
-    hour12: false,
-  })
+  return formatShanghaiDateTime(value)
 }
 
 export function DashboardShell({

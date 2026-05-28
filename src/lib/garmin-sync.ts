@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client"
 
 import prisma from "@/lib/prisma"
+import { formatShanghaiDateKey, getShanghaiDayRange, parseDateKeyAsUtc, parseGarminDateTime } from "@/lib/shanghai-time"
 
 type GarminPayload = {
   daily_metrics?: Record<string, unknown>
@@ -74,23 +75,6 @@ function asRecord(value: unknown): Record<string, unknown> | null {
   }
 
   return value as Record<string, unknown>
-}
-
-function parseGarminDateTime(value: unknown, mode: "utc" | "shanghai") {
-  if (typeof value !== "string") {
-    return null
-  }
-
-  const trimmed = value.trim()
-  const match = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?$/)
-  if (match) {
-    const [, year, month, day, hour, minute, second = "00"] = match
-    const utcMillis = Date.UTC(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute), Number(second))
-    return new Date(mode === "utc" ? utcMillis : utcMillis - 8 * 60 * 60 * 1000)
-  }
-
-  const parsed = new Date(trimmed)
-  return Number.isNaN(parsed.getTime()) ? null : parsed
 }
 
 function getActivityStartDate(raw: unknown, fallback: string) {
@@ -331,7 +315,7 @@ export function getDateKey(date: Date | string) {
     return date
   }
 
-  return date.toISOString().slice(0, 10)
+  return formatShanghaiDateKey(date)
 }
 
 export function isMetricComplete(raw: unknown) {
@@ -424,11 +408,13 @@ export async function syncGarminDateForUser({
   mode = "full",
   writeStrategy = "merge_gaps",
 }: SyncUserInput): Promise<SyncResult> {
+  const metricDate = parseDateKeyAsUtc(date)
+  const activityDateRange = getShanghaiDayRange(metricDate)
   const existingMetric = await prisma.dailyMetric.findUnique({
     where: {
       userId_date: {
         userId,
-        date: new Date(date),
+        date: metricDate,
       },
     },
   })
@@ -436,8 +422,8 @@ export async function syncGarminDateForUser({
     where: {
       userId,
       date: {
-        gte: new Date(`${date}T00:00:00.000Z`),
-        lt: new Date(`${date}T23:59:59.999Z`),
+        gte: activityDateRange.start,
+        lt: activityDateRange.endExclusive,
       },
     },
   })
@@ -459,7 +445,7 @@ export async function syncGarminDateForUser({
       where: {
         userId_date: {
           userId,
-          date: new Date(date),
+          date: metricDate,
         },
       },
       update: {
@@ -471,7 +457,7 @@ export async function syncGarminDateForUser({
       },
       create: {
         userId,
-        date: new Date(date),
+        date: metricDate,
         sleepScore: metricSummary.sleepScore,
         restingHr: metricSummary.restingHr,
         hrv: metricSummary.hrv,

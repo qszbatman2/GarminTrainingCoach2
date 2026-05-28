@@ -3,6 +3,7 @@ import { AuthPanel } from "@/components/auth-panel"
 import { DashboardShell } from "@/components/dashboard-shell"
 import { getOrCreateLatestAnalysisReport } from "@/lib/analysis-report"
 import prisma from "@/lib/prisma"
+import { formatShanghaiDateKey } from "@/lib/shanghai-time"
 
 export default async function Home() {
   const session = await auth()
@@ -66,7 +67,7 @@ export default async function Home() {
     }
   }
 
-  const latestMetricDate = user.metrics.length > 0 ? user.metrics[user.metrics.length - 1]?.date.toISOString().slice(0, 10) ?? null : null
+  const latestMetricDate = user.metrics.length > 0 ? formatShanghaiDateKey(user.metrics[user.metrics.length - 1]?.date ?? new Date()) : null
   const latestDataSyncAt = [...user.metrics, ...user.activities].reduce<string | null>((latest, item) => {
     const createdAt = item.createdAt.toISOString()
     if (!latest || new Date(createdAt).getTime() > new Date(latest).getTime()) {

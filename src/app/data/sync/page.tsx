@@ -4,35 +4,47 @@ import { DataSyncCenter, type SyncCalendarDay, type SyncCalendarMonth } from "@/
 import { AppPage } from "@/components/design-system"
 import { isActivityComplete, isMetricComplete } from "@/lib/garmin-sync"
 import prisma from "@/lib/prisma"
+import {
+  addShanghaiDays,
+  formatShanghaiDateKey,
+  getShanghaiDateParts,
+  getShanghaiDayRange,
+  getShanghaiMonthStart,
+  getTodayShanghaiDateKey,
+  parseDateKeyAsUtc,
+} from "@/lib/shanghai-time"
 import { getObservedSupportedFieldIds } from "@/lib/sync-supported-fields"
 
 const SYNC_CALENDAR_MONTHS = 12
+
+function pad(value: number) {
+  return String(value).padStart(2, "0")
+}
 
 function buildSyncCalendarMonths(
   metrics: Array<{ date: Date; raw: unknown }>,
   activities: Array<{ date: Date; raw: unknown }>
 ): SyncCalendarMonth[] {
   const now = new Date()
-  const todayKey = now.toISOString().slice(0, 10)
+  const todayKey = getTodayShanghaiDateKey(now)
 
-  const metricByDate = new Map(metrics.map((item) => [item.date.toISOString().slice(0, 10), item]))
+  const metricByDate = new Map(metrics.map((item) => [formatShanghaiDateKey(item.date), item]))
   const activitiesByDate = new Map<string, Array<{ raw: unknown }>>()
 
   for (const activity of activities) {
-    const dateKey = activity.date.toISOString().slice(0, 10)
+    const dateKey = formatShanghaiDateKey(activity.date)
     const bucket = activitiesByDate.get(dateKey) ?? []
     bucket.push({ raw: activity.raw })
     activitiesByDate.set(dateKey, bucket)
   }
 
   return Array.from({ length: SYNC_CALENDAR_MONTHS }, (_, offset) => {
-    const cursor = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - (SYNC_CALENDAR_MONTHS - 1 - offset), 1))
-    const year = cursor.getUTCFullYear()
-    const month = cursor.getUTCMonth()
-    const firstDay = new Date(Date.UTC(year, month, 1))
-    const daysInMonth = new Date(Date.UTC(year, month + 1, 0)).getUTCDate()
-    const startWeekday = (firstDay.getUTCDay() + 6) % 7
-    const monthLabel = `${year}-${String(month + 1).padStart(2, "0")}`
+    const firstDay = getShanghaiMonthStart(now, -(SYNC_CALENDAR_MONTHS - 1 - offset))
+    const { year, month, weekday } = getShanghaiDateParts(firstDay)
+    const nextMonthStart = getShanghaiMonthStart(firstDay, 1)
+    const daysInMonth = getShanghaiDateParts(addShanghaiDays(nextMonthStart, -1)).day
+    const startWeekday = (weekday + 6) % 7
+    const monthLabel = `${year}-${pad(month)}`
     const days: SyncCalendarDay[] = Array.from({ length: daysInMonth }, (_, index) => {
       const dayNumber = index + 1
       const dateKey = `${monthLabel}-${String(dayNumber).padStart(2, "0")}`
@@ -112,7 +124,7 @@ export default async function DataSyncPage() {
       raw: true,
     },
   })
-  const metricDates = recentMetrics.map((item) => item.date.toISOString().slice(0, 10))
+  const metricDates = recentMetrics.map((item) => formatShanghaiDateKey(item.date))
   const last30MetricDates = new Set(metricDates.slice(0, 30))
   const earliestTrackedDate = metricDates[metricDates.length - 1] ?? null
   const recentActivities = await prisma.activity.findMany({
@@ -121,7 +133,7 @@ export default async function DataSyncPage() {
       ...(earliestTrackedDate
         ? {
             date: {
-              gte: new Date(`${earliestTrackedDate}T00:00:00.000Z`),
+              gte: getShanghaiDayRange(parseDateKeyAsUtc(earliestTrackedDate)).start,
             },
           }
         : {}),
@@ -134,15 +146,15 @@ export default async function DataSyncPage() {
     },
   })
   const last30ActivityDays = new Set(
-    recentActivities.map((item) => item.date.toISOString().slice(0, 10)).filter((date) => last30MetricDates.has(date))
+    recentActivities.map((item) => formatShanghaiDateKey(item.date)).filter((date) => last30MetricDates.has(date))
   ).size
   const observedSupportedFieldIds = getObservedSupportedFieldIds(
     recentMetrics.map((item) => item.raw),
     recentActivities.map((item) => item.raw)
   )
   const now = new Date()
-  const currentMonthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - (SYNC_CALENDAR_MONTHS - 1), 1))
-  const nextMonthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1))
+  const currentMonthStart = getShanghaiMonthStart(now, -(SYNC_CALENDAR_MONTHS - 1))
+  const nextMonthStart = getShanghaiMonthStart(now, 1)
   const [monthMetrics, monthActivities] = await Promise.all([
     prisma.dailyMetric.findMany({
       where: {

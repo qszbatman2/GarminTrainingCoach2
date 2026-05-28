@@ -3,27 +3,16 @@ import { NextResponse } from "next/server"
 import { processBackfillJob } from "@/lib/backfill-jobs"
 import prisma from "@/lib/prisma"
 import { GarminSyncMode, GarminWriteStrategy, getDateKey, syncGarminDateForUser } from "@/lib/garmin-sync"
+import { getShanghaiDateKeyWithOffset } from "@/lib/shanghai-time"
 
 export const dynamic = "force-dynamic"
 
-function formatShanghaiDate(offsetDays = 0) {
-  const date = new Date(Date.now() + offsetDays * 24 * 60 * 60 * 1000)
-  const formatter = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Shanghai",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  })
-
-  return formatter.format(date)
-}
-
 function getYesterdayInShanghai() {
-  return formatShanghaiDate(-1)
+  return getShanghaiDateKeyWithOffset(-1)
 }
 
 function getTodayInShanghai() {
-  return formatShanghaiDate(0)
+  return getShanghaiDateKeyWithOffset(0)
 }
 
 function isAuthorized(request: Request) {

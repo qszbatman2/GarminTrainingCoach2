@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from "react"
 
 import { AccentPill, MetricTile, SubtleCard, SurfaceCard } from "@/components/design-system"
 import { SUPPORTED_FIELD_GROUPS } from "@/lib/sync-supported-fields"
+import { formatShanghaiDateTime, getTodayShanghaiDateKey } from "@/lib/shanghai-time"
 
 type BackfillJobSnapshot = {
   id: string
@@ -81,23 +82,7 @@ function getMessageWithoutUpdatedFields(message?: string | null) {
 }
 
 function formatDateTime(value?: string | null) {
-  if (!value) {
-    return "--"
-  }
-
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) {
-    return value
-  }
-
-  return date.toLocaleString("zh-CN", {
-    hour12: false,
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  })
+  return formatShanghaiDateTime(value, { includeYear: false, includeSeconds: true })
 }
 
 function getHeartbeatStatus(job: BackfillJobSnapshot | null) {
@@ -160,7 +145,7 @@ export function DataSyncCenter({
   syncCalendarMonths,
 }: DataSyncCenterProps) {
   const router = useRouter()
-  const [syncDate, setSyncDate] = useState(new Date().toISOString().split("T")[0])
+  const [syncDate, setSyncDate] = useState(getTodayShanghaiDateKey())
   const [syncLoading, setSyncLoading] = useState(false)
   const [syncResult, setSyncResult] = useState("")
   const [syncUpdatedFields, setSyncUpdatedFields] = useState<string[]>([])
