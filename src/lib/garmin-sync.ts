@@ -76,6 +76,29 @@ function asRecord(value: unknown): Record<string, unknown> | null {
   return value as Record<string, unknown>
 }
 
+function parseGarminDateTime(value: unknown, mode: "utc" | "shanghai") {
+  if (typeof value !== "string") {
+    return null
+  }
+
+  const trimmed = value.trim()
+  const match = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?$/)
+  if (match) {
+    const [, year, month, day, hour, minute, second = "00"] = match
+    const utcMillis = Date.UTC(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute), Number(second))
+    return new Date(mode === "utc" ? utcMillis : utcMillis - 8 * 60 * 60 * 1000)
+  }
+
+  const parsed = new Date(trimmed)
+  return Number.isNaN(parsed.getTime()) ? null : parsed
+}
+
+function getActivityStartDate(raw: unknown, fallback: string) {
+  const record = asRecord(raw)
+
+  return parseGarminDateTime(record?.startTimeGMT, "utc") ?? parseGarminDateTime(record?.startTimeLocal, "shanghai") ?? new Date(fallback)
+}
+
 function getByPath(source: unknown, path: string): unknown {
   return path.split(".").reduce<unknown>((current, key) => {
     if (Array.isArray(current)) {
@@ -481,12 +504,14 @@ export async function syncGarminDateForUser({
     const nextType = String(asRecord(asRecord(mergedActivityRaw)?.activityType)?.typeKey ?? existingActivity?.type ?? "unknown")
     const nextDistance = typeof asRecord(mergedActivityRaw)?.distance === "number" ? (asRecord(mergedActivityRaw)?.distance as number) : existingActivity?.distance ?? null
     const nextDuration = typeof asRecord(mergedActivityRaw)?.duration === "number" ? (asRecord(mergedActivityRaw)?.duration as number) : existingActivity?.duration ?? null
+    const nextDate = getActivityStartDate(mergedActivityRaw, date)
     const activityFieldChanged =
       !existingActivity ||
       existingActivity.name !== nextName ||
       existingActivity.type !== nextType ||
       existingActivity.distance !== nextDistance ||
-      existingActivity.duration !== nextDuration
+      existingActivity.duration !== nextDuration ||
+      existingActivity.date.getTime() !== nextDate.getTime()
 
     if (!existingActivity || activityMerge.changed || activityFieldChanged) {
       activityChangesCount += 1
@@ -497,6 +522,7 @@ export async function syncGarminDateForUser({
           type: nextType,
           distance: nextDistance,
           duration: nextDuration,
+          date: nextDate,
           raw: mergedActivityRaw,
         },
         create: {
@@ -506,7 +532,7 @@ export async function syncGarminDateForUser({
           type: nextType,
           distance: nextDistance,
           duration: nextDuration,
-          date: new Date(String(asRecord(mergedActivityRaw)?.startTimeLocal ?? date)),
+          date: nextDate,
           raw: mergedActivityRaw,
         },
       })

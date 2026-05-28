@@ -51,6 +51,14 @@ type EnrichedActivity = ActivityInput &
     recoveryHours: number | null
   }
 
+function asRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null
+  }
+
+  return value as Record<string, unknown>
+}
+
 type BaselineStats = {
   mean: number | null
   std: number | null
@@ -304,6 +312,29 @@ function clamp(value: number, min = 0, max = 100) {
   return Math.min(Math.max(value, min), max)
 }
 
+function parseGarminDateTime(value: unknown, mode: "utc" | "shanghai") {
+  if (typeof value !== "string") {
+    return null
+  }
+
+  const trimmed = value.trim()
+  const match = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?$/)
+  if (match) {
+    const [, year, month, day, hour, minute, second = "00"] = match
+    const utcMillis = Date.UTC(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute), Number(second))
+    return new Date(mode === "utc" ? utcMillis : utcMillis - 8 * 60 * 60 * 1000)
+  }
+
+  const parsed = new Date(trimmed)
+  return Number.isNaN(parsed.getTime()) ? null : parsed
+}
+
+function getActivityStartDate(activity: ActivityInput) {
+  const raw = asRecord(activity.raw)
+
+  return parseGarminDateTime(raw?.startTimeGMT, "utc") ?? parseGarminDateTime(raw?.startTimeLocal, "shanghai") ?? activity.date
+}
+
 function ratio(numerator: number | null, denominator: number | null, digits = 2) {
   if (numerator == null || denominator == null || denominator <= 0) {
     return null
@@ -463,10 +494,12 @@ function isMetricUsableForAnalysis(metric: EnrichedMetric) {
 
 function enrichActivity(activity: ActivityInput): EnrichedActivity {
   const displayValues = getActivityDisplayValues(activity.raw)
+  const correctedDate = getActivityStartDate(activity)
   const durationMin = activity.duration != null ? round(activity.duration / 60, 0) : null
 
   return {
     ...activity,
+    date: correctedDate,
     ...displayValues,
     durationMin,
     distanceKm: activity.distance != null ? round(activity.distance / 1000, 1) : null,
