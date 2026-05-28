@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 import Link from "next/link"
 import { useRouter } from "next/navigation"
@@ -229,6 +229,27 @@ export function DataSyncCenter({
     () => currentCalendar?.days.find((day) => day.date === effectiveSelectedCalendarDate) ?? null,
     [currentCalendar, effectiveSelectedCalendarDate]
   )
+  const heatmapCells = useMemo(() => {
+    if (!currentCalendar) {
+      return []
+    }
+
+    const leading = Array.from({ length: currentCalendar.startWeekday }, (_, index) => ({
+      key: `leading-${index}`,
+      day: null as SyncCalendarDay | null,
+    }))
+    const dayCells = currentCalendar.days.map((day) => ({
+      key: day.date,
+      day,
+    }))
+    const trailingCount = (7 - ((leading.length + dayCells.length) % 7)) % 7
+    const trailing = Array.from({ length: trailingCount }, (_, index) => ({
+      key: `trailing-${index}`,
+      day: null as SyncCalendarDay | null,
+    }))
+
+    return [...leading, ...dayCells, ...trailing]
+  }, [currentCalendar])
 
   useEffect(() => {
     if (!backfillJob || !["pending", "running"].includes(backfillJob.status)) {
@@ -434,145 +455,108 @@ export function DataSyncCenter({
       </SurfaceCard>
 
       {currentCalendar ? (
-        <SurfaceCard className="overflow-hidden p-0">
-          <div className="relative">
-            <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_left_top,rgba(45,212,191,0.08),transparent_28%),radial-gradient(circle_at_85%_18%,rgba(59,130,246,0.08),transparent_24%)]" />
-            <div className="relative grid gap-0 xl:grid-cols-[minmax(0,1fr)_248px]">
-              <div className="p-5">
-                <div className="flex flex-wrap items-center justify-between gap-4">
-                  <div className="flex items-center gap-2 rounded-full border border-white/8 bg-black/10 px-2 py-1 backdrop-blur-md">
-                    <button
-                      className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/8 bg-white/[0.04] text-sm text-slate-200 transition hover:border-white/14 hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-35"
-                      disabled={calendarMonthIndex === 0}
-                      onClick={() => setCalendarMonthIndex((value) => Math.max(0, value - 1))}
-                      type="button"
-                    >
-                      ←
-                    </button>
-                    <div className="min-w-28 text-center font-[family:var(--font-display)] text-xl font-semibold tracking-tight text-white">{currentCalendar.monthLabel}</div>
-                    <button
-                      className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/8 bg-white/[0.04] text-sm text-slate-200 transition hover:border-white/14 hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-35"
-                      disabled={calendarMonthIndex === syncCalendarMonths.length - 1}
-                      onClick={() => setCalendarMonthIndex((value) => Math.min(syncCalendarMonths.length - 1, value + 1))}
-                      type="button"
-                    >
-                      →
-                    </button>
-                  </div>
-
-                  <div className="flex flex-wrap items-center gap-3 text-[11px] text-slate-400">
-                    {(["future", "partial", "empty", "complete"] as SyncCalendarDayStatus[]).map((status) => (
-                      <span className="inline-flex items-center gap-1.5" key={status}>
-                        <span className={`h-[9px] w-[9px] rounded-[3px] border ${CALENDAR_STATUS_META[status].squareClassName}`} />
-                        {CALENDAR_STATUS_META[status].label}
-                      </span>
-                    ))}
-                  </div>
+        <div className="max-w-fit">
+          <SurfaceCard className="p-4 sm:p-5">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <button
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/8 bg-white/[0.03] text-sm text-slate-200 transition hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-35"
+                  disabled={calendarMonthIndex === 0}
+                  onClick={() => setCalendarMonthIndex((value) => Math.max(0, value - 1))}
+                  type="button"
+                >
+                  ←
+                </button>
+                <div className="min-w-24 text-center font-[family:var(--font-display)] text-xl font-semibold tracking-tight text-white">
+                  {currentCalendar.monthLabel}
                 </div>
-
-                <div className="mt-5 rounded-[1.6rem] border border-white/8 bg-[linear-gradient(180deg,rgba(255,255,255,0.03),rgba(255,255,255,0.015))] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
-                  <div className="mx-auto w-fit">
-                    <div className="grid grid-cols-7 gap-2 text-center text-[10px] uppercase tracking-[0.22em] text-slate-500">
-                      {["一", "二", "三", "四", "五", "六", "日"].map((label) => (
-                        <span className="w-[15px]" key={label}>
-                          {label}
-                        </span>
-                      ))}
-                    </div>
-                    <div className="mt-3 grid grid-cols-7 gap-2">
-                      {Array.from({ length: currentCalendar.startWeekday }).map((_, index) => (
-                        <div className="h-[15px] w-[15px] rounded-[5px] border border-transparent" key={`empty-${index}`} />
-                      ))}
-                      {currentCalendar.days.map((day) => {
-                        const isSelected = effectiveSelectedCalendarDate === day.date
-
-                        return (
-                          <button
-                            aria-label={`${day.date} ${CALENDAR_STATUS_META[day.status].label}`}
-                            className={`relative h-[15px] w-[15px] rounded-[5px] border transition duration-150 ${CALENDAR_STATUS_META[day.status].squareClassName} ${
-                              isSelected ? "scale-[1.22] border-cyan-200/60 ring-2 ring-cyan-300/55 shadow-[0_0_0_1px_rgba(255,255,255,0.12)_inset,0_0_18px_rgba(34,211,238,0.28)]" : ""
-                            } ${day.isToday && !isSelected ? "ring-1 ring-amber-300/35" : ""}`}
-                            key={day.date}
-                            onClick={() => setSelectedCalendarDate(day.date)}
-                            title={`${day.date} · ${CALENDAR_STATUS_META[day.status].label}`}
-                            type="button"
-                          >
-                            {day.isToday ? <span className="absolute inset-[3px] rounded-[2px] border border-white/15" /> : null}
-                          </button>
-                        )
-                      })}
-                    </div>
-                  </div>
-                </div>
+                <button
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/8 bg-white/[0.03] text-sm text-slate-200 transition hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-35"
+                  disabled={calendarMonthIndex === syncCalendarMonths.length - 1}
+                  onClick={() => setCalendarMonthIndex((value) => Math.min(syncCalendarMonths.length - 1, value + 1))}
+                  type="button"
+                >
+                  →
+                </button>
               </div>
 
-              <div className="border-t border-white/6 bg-[linear-gradient(180deg,rgba(255,255,255,0.045),rgba(255,255,255,0.02))] p-4 xl:border-l xl:border-t-0">
-                {selectedCalendarDay ? (
-                  <div className="rounded-[1.5rem] border border-white/8 bg-[linear-gradient(180deg,rgba(10,18,34,0.82),rgba(12,20,38,0.64))] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <div className="text-[11px] uppercase tracking-[0.22em] text-slate-500">Selected Day</div>
-                        <div className="mt-2 font-[family:var(--font-display)] text-2xl font-semibold tracking-tight text-white">
-                          {selectedCalendarDay.date}
-                        </div>
-                      </div>
-                      <AccentPill tone={CALENDAR_STATUS_META[selectedCalendarDay.status].pillTone}>
-                        {CALENDAR_STATUS_META[selectedCalendarDay.status].label}
-                      </AccentPill>
-                    </div>
-
-                    <div className="mt-4 grid gap-2">
-                      <div className="rounded-2xl border border-white/6 bg-white/[0.03] px-3 py-2.5">
-                        <div className="text-[11px] uppercase tracking-[0.18em] text-slate-500">Daily</div>
-                        <div className="mt-1 text-sm font-medium text-slate-100">
-                          {selectedCalendarDay.metricComplete ? "完整" : selectedCalendarDay.hasMetric ? "待补齐" : "无"}
-                        </div>
-                      </div>
-                      <div className="rounded-2xl border border-white/6 bg-white/[0.03] px-3 py-2.5">
-                        <div className="text-[11px] uppercase tracking-[0.18em] text-slate-500">Activity</div>
-                        <div className="mt-1 text-sm font-medium text-slate-100">
-                          {selectedCalendarDay.activityCount > 0
-                            ? selectedCalendarDay.incompleteActivityCount > 0
-                              ? `${selectedCalendarDay.activityCount} 条 / 缺口 ${selectedCalendarDay.incompleteActivityCount}`
-                              : `${selectedCalendarDay.activityCount} 条完整`
-                            : "无"}
-                        </div>
-                      </div>
-                    </div>
-
-                    {selectedCalendarDay.isToday ? (
-                      <div className="mt-3 text-xs leading-6 text-slate-400">今天默认按待补齐处理，避免把当日增量误判为缺失。</div>
-                    ) : null}
-
-                    <div className="mt-4 grid grid-cols-4 gap-2">
-                      {[
-                        { key: "future", count: calendarSummary.future },
-                        { key: "partial", count: calendarSummary.partial },
-                        { key: "empty", count: calendarSummary.empty },
-                        { key: "complete", count: calendarSummary.complete },
-                      ].map((item) => (
-                        <div className="rounded-xl border border-white/6 bg-black/10 px-2 py-2 text-center" key={item.key}>
-                          <div className="mx-auto h-[8px] w-[8px] rounded-[3px] border border-white/10" />
-                          <div
-                            className={`mx-auto -mt-[8px] h-[8px] w-[8px] rounded-[3px] border ${
-                              CALENDAR_STATUS_META[item.key as SyncCalendarDayStatus].squareClassName
-                            }`}
-                          />
-                          <div className="mt-2 text-[10px] uppercase tracking-[0.16em] text-slate-500">
-                            {CALENDAR_STATUS_META[item.key as SyncCalendarDayStatus].label.slice(0, 1)}
-                          </div>
-                          <div className="mt-1 text-sm font-semibold text-slate-200">{item.count}</div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ) : null}
+              <div className="flex flex-wrap items-center gap-3 text-[11px] text-slate-400">
+                {(["future", "partial", "empty", "complete"] as SyncCalendarDayStatus[]).map((status) => (
+                  <span className="inline-flex items-center gap-1.5" key={status}>
+                    <span className={`h-[9px] w-[9px] rounded-[2px] border ${CALENDAR_STATUS_META[status].squareClassName}`} />
+                    {CALENDAR_STATUS_META[status].label}
+                  </span>
+                ))}
               </div>
             </div>
-          </div>
-        </SurfaceCard>
-      ) : null}
 
+            <div className="mt-4 flex items-start gap-3">
+              <div className="grid grid-rows-7 gap-2 pt-[18px] text-[10px] uppercase tracking-[0.18em] text-slate-600">
+                {["一", "", "三", "", "五", "", "日"].map((label, index) => (
+                  <span className="flex h-[14px] items-center" key={`${label}-${index}`}>
+                    {label}
+                  </span>
+                ))}
+              </div>
+
+              <div>
+                <div
+                  className="grid grid-flow-col grid-rows-7 gap-2"
+                  style={{ gridTemplateRows: "repeat(7, 14px)", gridAutoColumns: "14px" }}
+                >
+                  {heatmapCells.map((cell) => {
+                    if (!cell.day) {
+                      return <div className="h-[14px] w-[14px] rounded-[2px]" key={cell.key} />
+                    }
+
+                    const day = cell.day
+                    const isSelected = effectiveSelectedCalendarDate === day.date
+
+                    return (
+                      <button
+                        aria-label={`${day.date} ${CALENDAR_STATUS_META[day.status].label}`}
+                        className={`h-[14px] w-[14px] rounded-[2px] border transition duration-150 ${CALENDAR_STATUS_META[day.status].squareClassName} ${
+                          isSelected ? "scale-[1.18] border-cyan-200/60 ring-2 ring-cyan-300/50" : ""
+                        } ${day.isToday && !isSelected ? "ring-1 ring-white/25" : ""}`}
+                        key={cell.key}
+                        onClick={() => setSelectedCalendarDate(day.date)}
+                        title={`${day.date} · ${CALENDAR_STATUS_META[day.status].label}`}
+                        type="button"
+                      />
+                    )
+                  })}
+                </div>
+
+                {selectedCalendarDay ? (
+                  <div className="mt-4 flex flex-wrap items-center gap-2 text-xs text-slate-300">
+                    <span className="font-medium text-white">{selectedCalendarDay.date}</span>
+                    <AccentPill tone={CALENDAR_STATUS_META[selectedCalendarDay.status].pillTone}>
+                      {CALENDAR_STATUS_META[selectedCalendarDay.status].label}
+                    </AccentPill>
+                    <span>Daily {selectedCalendarDay.metricComplete ? "完整" : selectedCalendarDay.hasMetric ? "待补齐" : "无"}</span>
+                    <span>
+                      活动{" "}
+                      {selectedCalendarDay.activityCount > 0
+                        ? selectedCalendarDay.incompleteActivityCount > 0
+                          ? `${selectedCalendarDay.activityCount} / 缺口 ${selectedCalendarDay.incompleteActivityCount}`
+                          : `${selectedCalendarDay.activityCount} 完整`
+                        : "无"}
+                    </span>
+                    {selectedCalendarDay.isToday ? <span className="text-slate-500">今日默认按待补齐处理</span> : null}
+                  </div>
+                ) : null}
+
+                <div className="mt-3 flex flex-wrap items-center gap-3 text-[11px] text-slate-500">
+                  <span>灰 {calendarSummary.future}</span>
+                  <span>黄 {calendarSummary.partial}</span>
+                  <span>红 {calendarSummary.empty}</span>
+                  <span>绿 {calendarSummary.complete}</span>
+                </div>
+              </div>
+            </div>
+          </SurfaceCard>
+        </div>
+      ) : null}
       {backfillJob ? (
         <SurfaceCard className="p-6">
           <div className="flex items-center justify-between gap-3">
