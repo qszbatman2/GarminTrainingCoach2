@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from "react"
+import { useState } from "react"
 
 import { AccentPill, SubtleCard, SurfaceCard } from "@/components/design-system"
 import type { TrainingAnalysisPayload } from "@/lib/training-analysis"
@@ -47,65 +47,18 @@ function formatTime(value?: string) {
   })
 }
 
-function formatCountdown(targetTime: string, now: number) {
-  const diffMs = new Date(targetTime).getTime() - now
-  if (diffMs <= 0) {
-    return "现在可以开始训练"
-  }
-
-  const totalMinutes = Math.ceil(diffMs / (1000 * 60))
-  const days = Math.floor(totalMinutes / (60 * 24))
-  const hours = Math.floor((totalMinutes % (60 * 24)) / 60)
-  const minutes = totalMinutes % 60
-
-  if (days > 0) {
-    return `${days}天 ${hours}小时 ${minutes}分钟`
-  }
-  if (hours > 0) {
-    return `${hours}小时 ${minutes}分钟`
-  }
-  return `${minutes}分钟`
-}
-
-function recoveryTone(value: number): "emerald" | "amber" | "violet" {
-  return value <= 0 ? "emerald" : value <= 6 * 60 * 60 * 1000 ? "amber" : "violet"
-}
-
 export function AITrainingReport({
   initialReport,
   trainingGoal,
+  onReportChange,
 }: {
   initialReport: TrainingAnalysisPayload | null
   trainingGoal: string
+  onReportChange?: (report: TrainingAnalysisPayload | null) => void
 }) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
   const [result, setResult] = useState<ApiResult | null>(initialReport ? { ok: true, ...initialReport } : null)
-  const [now, setNow] = useState(() => Date.now())
-
-  useEffect(() => {
-    const timer = window.setInterval(() => setNow(Date.now()), 30_000)
-    return () => window.clearInterval(timer)
-  }, [])
-
-  const recoverySummary = useMemo(() => {
-    if (!result?.context.activity.latestSession || !result.context.recovery.readyAt || result.context.recovery.recoveryHours == null) {
-      return null
-    }
-
-    const latestSession = result.context.activity.latestSession
-    const readyAt = result.context.recovery.readyAt
-    const remainingMs = new Date(readyAt).getTime() - now
-
-    return {
-      latestSession,
-      readyAt,
-      remainingMs,
-      countdownLabel: formatCountdown(readyAt, now),
-      tone: recoveryTone(remainingMs),
-      statusLabel: remainingMs <= 0 ? "可开始训练" : "恢复中",
-    }
-  }, [now, result])
 
   async function handleGenerate(forceRefresh = true) {
     setLoading(true)
@@ -123,7 +76,9 @@ export function AITrainingReport({
         throw new Error("error" in data && typeof data.error === "string" ? data.error : "生成训练分析失败")
       }
 
-      setResult(data as ApiResult)
+      const nextResult = data as ApiResult
+      setResult(nextResult)
+      onReportChange?.(nextResult)
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "生成训练分析失败")
     } finally {
@@ -165,21 +120,7 @@ export function AITrainingReport({
               <div className="text-xs text-slate-300">更新于 {formatTime(result.updatedAt)}</div>
             </div>
 
-            <div className={`mt-5 grid gap-4 ${recoverySummary ? "xl:grid-cols-[0.44fr_1.06fr_0.9fr]" : "xl:grid-cols-[1.1fr_0.9fr]"}`}>
-              {recoverySummary ? (
-                <div className="rounded-[1.2rem] border border-cyan-300/15 bg-[linear-gradient(180deg,rgba(34,211,238,0.16),rgba(8,47,73,0.18))] p-4">
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="text-[11px] uppercase tracking-[0.24em] text-cyan-200/80">Recovery</div>
-                    <AccentPill tone={recoverySummary.tone}>{recoverySummary.statusLabel}</AccentPill>
-                  </div>
-                  <div className="mt-4 text-3xl font-semibold tracking-tight text-white">{recoverySummary.countdownLabel}</div>
-                  <div className="mt-2 text-xs text-cyan-100/80">可开始 {formatTime(recoverySummary.readyAt)}</div>
-                  <div className="mt-4 border-t border-white/10 pt-3 text-xs text-slate-300">
-                    {result.context.recovery.recoveryHours}h 恢复窗口
-                  </div>
-                </div>
-              ) : null}
-
+            <div className="mt-5 grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
               <div className="rounded-[1.2rem] border border-white/10 bg-white/[0.04] p-5">
                 <div className="text-sm text-slate-300">今日建议</div>
                 <div className="mt-2 text-2xl font-semibold tracking-tight text-white">{result.analysis.todayAdvice}</div>

@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation"
 import { useState } from "react"
 
 import { AITrainingReport } from "@/components/ai-training-report"
+import { RecoveryCountdownCard } from "@/components/recovery-countdown-card"
 import { AccentPill, AppPage, SurfaceCard, SubtleCard } from "@/components/design-system"
 import type { TrainingAnalysisPayload } from "@/lib/training-analysis"
 
@@ -34,6 +35,7 @@ export function DashboardShell({
   const [trainingGoalDraft, setTrainingGoalDraft] = useState(trainingGoal)
   const [trainingGoalLoading, setTrainingGoalLoading] = useState(false)
   const [trainingGoalMessage, setTrainingGoalMessage] = useState("")
+  const [analysisReport, setAnalysisReport] = useState(initialAnalysisReport)
 
   const hasGarminBinding = garminEmail.trim().length > 0
   const latestMetricDateLabel = latestMetricDate ?? "--"
@@ -223,7 +225,10 @@ export function DashboardShell({
 
       {hasGarminBinding ? (
         <>
-          <AITrainingReport initialReport={initialAnalysisReport} trainingGoal={savedTrainingGoal} />
+          <div className="flex justify-end">
+            <RecoveryCountdownCard report={analysisReport} />
+          </div>
+          <AITrainingReport initialReport={analysisReport} onReportChange={setAnalysisReport} trainingGoal={savedTrainingGoal} />
 
           <section className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
             <SurfaceCard className="p-6">

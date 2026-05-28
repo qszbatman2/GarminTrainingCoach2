@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react"
 
 import { AITrainingReport } from "@/components/ai-training-report"
 import { AccentPill, MetricTile, SectionHeader, SubtleCard, SurfaceCard } from "@/components/design-system"
+import { RecoveryCountdownCard } from "@/components/recovery-countdown-card"
 import { getBodyBatterySeries, getHeartRateSeries, getMetricDisplayValues, getStressSeries, type NumericPoint } from "@/lib/garmin-data"
 import type { TrainingAnalysisPayload } from "@/lib/training-analysis"
 
@@ -576,6 +577,7 @@ function buildFieldEntries(metric: EnrichedMetric | null): FieldEntry[] {
 export function DataExplorer({ userEmail, metricTotal, metrics, activityTotal, activities, initialAnalysisReport, trainingGoal }: DataExplorerProps) {
   const [metricsState, setMetricsState] = useState(metrics)
   const [activitiesState, setActivitiesState] = useState(activities)
+  const [analysisReport, setAnalysisReport] = useState(initialAnalysisReport)
   const [metricsLoading, setMetricsLoading] = useState(false)
   const [activitiesLoading, setActivitiesLoading] = useState(false)
   const [selectedDate, setSelectedDate] = useState(metrics[0]?.date ?? "")
@@ -814,7 +816,10 @@ export function DataExplorer({ userEmail, metricTotal, metrics, activityTotal, a
 
   return (
     <>
-      <AITrainingReport initialReport={initialAnalysisReport} trainingGoal={trainingGoal} />
+      <div className="flex justify-end">
+        <RecoveryCountdownCard report={analysisReport} />
+      </div>
+      <AITrainingReport initialReport={analysisReport} onReportChange={setAnalysisReport} trainingGoal={trainingGoal} />
 
       <section className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
         <SurfaceCard className="p-5">
