@@ -51,10 +51,12 @@ export function AITrainingReport({
   initialReport,
   trainingGoal,
   onReportChange,
+  className = "",
 }: {
   initialReport: TrainingAnalysisPayload | null
   trainingGoal: string
   onReportChange?: (report: TrainingAnalysisPayload | null) => void
+  className?: string
 }) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
@@ -87,7 +89,7 @@ export function AITrainingReport({
   }
 
   return (
-    <SurfaceCard className="p-6">
+    <SurfaceCard className={`p-6 ${className}`}>
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div>
           <div className="flex flex-wrap items-center gap-2">

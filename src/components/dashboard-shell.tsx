@@ -1,12 +1,11 @@
 'use client'
 
-import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useState } from "react"
 
 import { AITrainingReport } from "@/components/ai-training-report"
 import { RecoveryCountdownCard } from "@/components/recovery-countdown-card"
-import { AccentPill, AppPage, SurfaceCard, SubtleCard } from "@/components/design-system"
+import { AccentPill, AppPage, SurfaceCard } from "@/components/design-system"
 import type { TrainingAnalysisPayload } from "@/lib/training-analysis"
 
 type DashboardShellProps = {
@@ -14,7 +13,18 @@ type DashboardShellProps = {
   garminEmail: string
   trainingGoal: string
   latestMetricDate: string | null
+  latestDataSyncAt: string | null
   initialAnalysisReport: TrainingAnalysisPayload | null
+}
+
+function formatDateTime(value?: string | null) {
+  if (!value) {
+    return "--"
+  }
+
+  return new Date(value).toLocaleString("zh-CN", {
+    hour12: false,
+  })
 }
 
 export function DashboardShell({
@@ -22,6 +32,7 @@ export function DashboardShell({
   garminEmail,
   trainingGoal,
   latestMetricDate,
+  latestDataSyncAt,
   initialAnalysisReport,
 }: DashboardShellProps) {
   const router = useRouter()
@@ -203,72 +214,48 @@ export function DashboardShell({
 
       {hasGarminBinding ? (
         <section className="grid gap-6 xl:grid-cols-[1.18fr_0.82fr]">
-          <AITrainingReport initialReport={analysisReport} onReportChange={setAnalysisReport} trainingGoal={savedTrainingGoal} />
+          <AITrainingReport className="xl:col-span-2" initialReport={analysisReport} onReportChange={setAnalysisReport} trainingGoal={savedTrainingGoal} />
+
+          <SurfaceCard className="p-6">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <div className="text-xs uppercase tracking-[0.25em] text-violet-300/80">Training Goal</div>
+                <h2 className="mt-2 text-xl font-semibold tracking-tight text-white">目标放在主决策下方，改完后直接重生成。</h2>
+              </div>
+              <AccentPill tone={savedTrainingGoal ? "violet" : "neutral"}>{savedTrainingGoal ? "已生效" : "未设置"}</AccentPill>
+            </div>
+
+            <form className="mt-5 space-y-3" onSubmit={handleSaveTrainingGoal}>
+              <textarea
+                className="min-h-32 w-full rounded-[1.35rem] border border-white/10 bg-white/[0.04] px-4 py-4 text-white outline-none placeholder:text-slate-500 focus:border-violet-400/60"
+                maxLength={500}
+                onChange={(event) => setTrainingGoalDraft(event.target.value)}
+                placeholder="例如：减重到 60kg；每周 1 次高强度、3-4 次低强度；优先保证恢复。"
+                value={trainingGoalDraft}
+              />
+              <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-slate-400">
+                <span>{trainingGoalDraft.trim().length}/500</span>
+                <button
+                  className="rounded-2xl bg-violet-500 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-violet-400 disabled:cursor-not-allowed disabled:opacity-60"
+                  disabled={trainingGoalLoading}
+                  type="submit"
+                >
+                  {trainingGoalLoading ? "保存中..." : trainingGoalDraft.trim() ? "保存目标" : "清空目标"}
+                </button>
+              </div>
+              {trainingGoalMessage ? (
+                <div className="rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-slate-300">{trainingGoalMessage}</div>
+              ) : null}
+            </form>
+          </SurfaceCard>
 
           <div className="grid gap-6 content-start">
             <RecoveryCountdownCard className="max-w-none" report={analysisReport} title="Ready To Train" />
-            <SurfaceCard className="p-6">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <div className="text-xs uppercase tracking-[0.25em] text-violet-300/80">Training Goal</div>
-                  <h2 className="mt-2 text-xl font-semibold tracking-tight text-white">目标放在主决策旁边，改完后直接重生成。</h2>
-                </div>
-                <AccentPill tone={savedTrainingGoal ? "violet" : "neutral"}>{savedTrainingGoal ? "已生效" : "未设置"}</AccentPill>
-              </div>
+          </div>
 
-              <form className="mt-5 space-y-3" onSubmit={handleSaveTrainingGoal}>
-                <textarea
-                  className="min-h-32 w-full rounded-[1.35rem] border border-white/10 bg-white/[0.04] px-4 py-4 text-white outline-none placeholder:text-slate-500 focus:border-violet-400/60"
-                  maxLength={500}
-                  onChange={(event) => setTrainingGoalDraft(event.target.value)}
-                  placeholder="例如：减重到 60kg；每周 1 次高强度、3-4 次低强度；优先保证恢复。"
-                  value={trainingGoalDraft}
-                />
-                <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-slate-400">
-                  <span>{trainingGoalDraft.trim().length}/500</span>
-                  <button
-                    className="rounded-2xl bg-violet-500 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-violet-400 disabled:cursor-not-allowed disabled:opacity-60"
-                    disabled={trainingGoalLoading}
-                    type="submit"
-                  >
-                    {trainingGoalLoading ? "保存中..." : trainingGoalDraft.trim() ? "保存目标" : "清空目标"}
-                  </button>
-                </div>
-                {trainingGoalMessage ? (
-                  <div className="rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-slate-300">{trainingGoalMessage}</div>
-                ) : null}
-              </form>
-            </SurfaceCard>
-
-            <SurfaceCard className="p-6">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <div className="text-xs uppercase tracking-[0.25em] text-slate-400">Control Center</div>
-                  <h2 className="mt-2 text-xl font-semibold tracking-tight text-white">同步与入口</h2>
-                </div>
-                <AccentPill tone={latestMetricDate ? "emerald" : "amber"}>{latestMetricDate ? "可分析" : "待同步"}</AccentPill>
-              </div>
-
-              <div className="mt-5 grid gap-3">
-                <SubtleCard className="p-4">
-                  <div className="text-sm text-slate-400">Garmin 账号</div>
-                  <div className="mt-2 break-all text-base font-semibold text-white">{garminEmail}</div>
-                </SubtleCard>
-                <SubtleCard className="p-4">
-                  <div className="text-sm text-slate-400">最新同步日</div>
-                  <div className="mt-2 text-2xl font-semibold text-white">{latestMetricDateLabel}</div>
-                  <div className="mt-1 text-sm text-slate-400">{latestMetricDate ? "最近一日 Daily 已同步" : "先去同步页拉取首批数据"}</div>
-                </SubtleCard>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <Link className="rounded-[1.1rem] border border-cyan-300/20 bg-cyan-300/10 px-4 py-4 text-sm font-medium text-cyan-100 transition hover:bg-cyan-300/15" href="/data">
-                    进入数据页
-                  </Link>
-                  <Link className="rounded-[1.1rem] border border-white/10 bg-white/[0.04] px-4 py-4 text-sm font-medium text-slate-100 transition hover:bg-white/[0.08]" href="/data/sync">
-                    查看同步页
-                  </Link>
-                </div>
-              </div>
-            </SurfaceCard>
+          <div className="xl:col-span-2 space-y-1 px-1 text-[11px] text-slate-500">
+            <div>最新数据同步：{formatDateTime(latestDataSyncAt)}</div>
+            <div>AI分析时间：{formatDateTime(analysisReport?.updatedAt)}</div>
           </div>
         </section>
       ) : null}
