@@ -165,46 +165,21 @@ export function AITrainingReport({
               <div className="text-xs text-slate-300">更新于 {formatTime(result.updatedAt)}</div>
             </div>
 
-            {recoverySummary ? (
-              <div className="mt-5 rounded-[1.4rem] border border-cyan-300/15 bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.18),rgba(15,23,42,0.08)_42%,rgba(15,23,42,0.24)_100%)] p-5">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <div className="text-xs uppercase tracking-[0.24em] text-cyan-200/80">Recovery Timer</div>
-                      <AccentPill tone={recoverySummary.tone}>{recoverySummary.statusLabel}</AccentPill>
-                    </div>
-                    <div className="mt-3 text-3xl font-semibold tracking-tight text-white">{recoverySummary.countdownLabel}</div>
-                    <p className="mt-2 text-sm leading-6 text-slate-200">
-                      上一次训练是 {recoverySummary.latestSession.name}。倒计时基于最近一堂训练的恢复窗口估算，不覆盖今日 AI 训练结论。
-                    </p>
+            <div className={`mt-5 grid gap-4 ${recoverySummary ? "xl:grid-cols-[0.44fr_1.06fr_0.9fr]" : "xl:grid-cols-[1.1fr_0.9fr]"}`}>
+              {recoverySummary ? (
+                <div className="rounded-[1.2rem] border border-cyan-300/15 bg-[linear-gradient(180deg,rgba(34,211,238,0.16),rgba(8,47,73,0.18))] p-4">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="text-[11px] uppercase tracking-[0.24em] text-cyan-200/80">Recovery</div>
+                    <AccentPill tone={recoverySummary.tone}>{recoverySummary.statusLabel}</AccentPill>
                   </div>
-                  <div className="rounded-[1.1rem] border border-white/10 bg-black/15 px-4 py-3 text-right">
-                    <div className="text-xs uppercase tracking-[0.22em] text-slate-400">估算恢复</div>
-                    <div className="mt-2 text-2xl font-semibold text-white">{result.context.recovery.recoveryHours}h</div>
+                  <div className="mt-4 text-3xl font-semibold tracking-tight text-white">{recoverySummary.countdownLabel}</div>
+                  <div className="mt-2 text-xs text-cyan-100/80">可开始 {formatTime(recoverySummary.readyAt)}</div>
+                  <div className="mt-4 border-t border-white/10 pt-3 text-xs text-slate-300">
+                    {result.context.recovery.recoveryHours}h 恢复窗口
                   </div>
                 </div>
+              ) : null}
 
-                <div className="mt-4 grid gap-3 md:grid-cols-3">
-                  <div className="rounded-[1rem] border border-white/10 bg-white/[0.04] p-4">
-                    <div className="text-xs uppercase tracking-[0.2em] text-slate-400">上次结束</div>
-                    <div className="mt-2 text-sm font-medium text-white">{formatTime(recoverySummary.latestSession.endedAt ?? recoverySummary.latestSession.startedAt)}</div>
-                  </div>
-                  <div className="rounded-[1rem] border border-white/10 bg-white/[0.04] p-4">
-                    <div className="text-xs uppercase tracking-[0.2em] text-slate-400">可开始时间</div>
-                    <div className="mt-2 text-sm font-medium text-white">{formatTime(recoverySummary.readyAt)}</div>
-                  </div>
-                  <div className="rounded-[1rem] border border-white/10 bg-white/[0.04] p-4">
-                    <div className="text-xs uppercase tracking-[0.2em] text-slate-400">最近训练</div>
-                    <div className="mt-2 text-sm font-medium text-white">
-                      {recoverySummary.latestSession.durationMin ?? "--"} 分钟
-                      {recoverySummary.latestSession.distanceKm != null ? ` / ${recoverySummary.latestSession.distanceKm} km` : ""}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ) : null}
-
-            <div className="mt-5 grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
               <div className="rounded-[1.2rem] border border-white/10 bg-white/[0.04] p-5">
                 <div className="text-sm text-slate-300">今日建议</div>
                 <div className="mt-2 text-2xl font-semibold tracking-tight text-white">{result.analysis.todayAdvice}</div>
