@@ -2,10 +2,75 @@ import Link from "next/link"
 
 import { auth } from "@/auth"
 import { AuthPanel } from "@/components/auth-panel"
-import { DataSyncCenter } from "@/components/data-sync-center"
+import { DataSyncCenter, type SyncCalendarDay, type SyncCalendarMonth } from "@/components/data-sync-center"
 import { AppPage, PageHero } from "@/components/design-system"
+import { isActivityComplete, isMetricComplete } from "@/lib/garmin-sync"
 import prisma from "@/lib/prisma"
 import { getObservedSupportedFieldIds } from "@/lib/sync-supported-fields"
+
+function buildCurrentMonthCalendar(
+  metrics: Array<{ date: Date; raw: unknown }>,
+  activities: Array<{ date: Date; raw: unknown }>
+): SyncCalendarMonth {
+  const now = new Date()
+  const todayKey = now.toISOString().slice(0, 10)
+  const year = now.getUTCFullYear()
+  const month = now.getUTCMonth()
+  const firstDay = new Date(Date.UTC(year, month, 1))
+  const daysInMonth = new Date(Date.UTC(year, month + 1, 0)).getUTCDate()
+  const startWeekday = (firstDay.getUTCDay() + 6) % 7
+  const monthLabel = `${year}-${String(month + 1).padStart(2, "0")}`
+
+  const metricByDate = new Map(metrics.map((item) => [item.date.toISOString().slice(0, 10), item]))
+  const activitiesByDate = new Map<string, Array<{ raw: unknown }>>()
+
+  for (const activity of activities) {
+    const dateKey = activity.date.toISOString().slice(0, 10)
+    const bucket = activitiesByDate.get(dateKey) ?? []
+    bucket.push({ raw: activity.raw })
+    activitiesByDate.set(dateKey, bucket)
+  }
+
+  const days: SyncCalendarDay[] = Array.from({ length: daysInMonth }, (_, index) => {
+    const dayNumber = index + 1
+    const dateKey = `${monthLabel}-${String(dayNumber).padStart(2, "0")}`
+    const metric = metricByDate.get(dateKey)
+    const dayActivities = activitiesByDate.get(dateKey) ?? []
+    const hasMetric = Boolean(metric)
+    const metricComplete = metric ? isMetricComplete(metric.raw) : false
+    const incompleteActivityCount = dayActivities.filter((item) => !isActivityComplete(item.raw)).length
+    const activityCount = dayActivities.length
+    const isToday = dateKey === todayKey
+
+    const status =
+      dateKey > todayKey
+        ? "future"
+        : isToday
+          ? "partial"
+          : hasMetric && metricComplete && incompleteActivityCount === 0
+            ? "complete"
+            : hasMetric || activityCount > 0
+              ? "partial"
+              : "empty"
+
+    return {
+      date: dateKey,
+      dayNumber,
+      status,
+      hasMetric,
+      metricComplete,
+      activityCount,
+      incompleteActivityCount,
+      isToday,
+    }
+  })
+
+  return {
+    monthLabel,
+    startWeekday,
+    days,
+  }
+}
 
 export default async function DataSyncPage() {
   const session = await auth()
@@ -73,6 +138,40 @@ export default async function DataSyncPage() {
     recentMetrics.map((item) => item.raw),
     recentActivities.map((item) => item.raw)
   )
+  const now = new Date()
+  const currentMonthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1))
+  const nextMonthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1))
+  const [monthMetrics, monthActivities] = await Promise.all([
+    prisma.dailyMetric.findMany({
+      where: {
+        userId: session.user.id,
+        date: {
+          gte: currentMonthStart,
+          lt: nextMonthStart,
+        },
+      },
+      orderBy: { date: "asc" },
+      select: {
+        date: true,
+        raw: true,
+      },
+    }),
+    prisma.activity.findMany({
+      where: {
+        userId: session.user.id,
+        date: {
+          gte: currentMonthStart,
+          lt: nextMonthStart,
+        },
+      },
+      orderBy: { date: "asc" },
+      select: {
+        date: true,
+        raw: true,
+      },
+    }),
+  ])
+  const syncCalendar = buildCurrentMonthCalendar(monthMetrics, monthActivities)
 
   return (
     <AppPage>
@@ -120,6 +219,7 @@ export default async function DataSyncPage() {
           last30MetricCount={Math.min(metricDates.length, 30)}
           latestMetricDate={metricDates[0] ?? null}
           metricsCount={user._count.metrics}
+          syncCalendar={syncCalendar}
           userEmail={user.email}
         />
     </AppPage>
