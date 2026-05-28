@@ -199,6 +199,16 @@ export function DataSyncCenter({
       ),
     [currentCalendar]
   )
+  const calendarPastDayCount = useMemo(
+    () => (currentCalendar?.days ?? []).filter((day) => day.status !== "future").length,
+    [currentCalendar]
+  )
+  const calendarCoverageCount = useMemo(
+    () => (currentCalendar?.days ?? []).filter((day) => day.status === "complete" || day.status === "partial").length,
+    [currentCalendar]
+  )
+  const calendarCoverageLabel =
+    calendarPastDayCount > 0 ? `${Math.round((calendarCoverageCount / calendarPastDayCount) * 100)}%` : "--"
   const effectiveSelectedCalendarDate = useMemo(() => {
     if (!currentCalendar) {
       return null
@@ -214,6 +224,20 @@ export function DataSyncCenter({
     () => currentCalendar?.days.find((day) => day.date === effectiveSelectedCalendarDate) ?? null,
     [currentCalendar, effectiveSelectedCalendarDate]
   )
+  const selectedCalendarMetricLabel = selectedCalendarDay
+    ? selectedCalendarDay.metricComplete
+      ? "Daily 完整"
+      : selectedCalendarDay.hasMetric
+        ? "Daily 待补齐"
+        : "Daily 无数据"
+    : "--"
+  const selectedCalendarActivityLabel = selectedCalendarDay
+    ? selectedCalendarDay.activityCount > 0
+      ? selectedCalendarDay.incompleteActivityCount > 0
+        ? `活动 ${selectedCalendarDay.activityCount} 条，仍有 ${selectedCalendarDay.incompleteActivityCount} 条缺口`
+        : `活动 ${selectedCalendarDay.activityCount} 条，已拉全`
+      : "活动无数据"
+    : "--"
   const heatmapCells = useMemo(() => {
     if (!currentCalendar) {
       return []
@@ -440,107 +464,147 @@ export function DataSyncCenter({
       </SurfaceCard>
 
       {currentCalendar ? (
-        <div className="inline-block align-top">
-          <SurfaceCard className="w-fit p-4 sm:p-5">
-            <div className="flex items-center gap-2">
-              <button
-                className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/8 bg-white/[0.03] text-sm text-slate-200 transition hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-35"
-                disabled={calendarMonthIndex === 0}
-                onClick={() => setCalendarMonthIndex((value) => Math.max(0, value - 1))}
-                type="button"
-              >
-                ←
-              </button>
-              <div className="min-w-24 text-center font-[family:var(--font-display)] text-xl font-semibold tracking-tight text-white">
-                {currentCalendar.monthLabel}
+        <SurfaceCard className="max-w-4xl p-5 sm:p-6">
+          <div className="flex flex-col gap-5">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+              <div>
+                <div className="text-[11px] uppercase tracking-[0.28em] text-cyan-300/72">Sync Calendar</div>
+                <div className="mt-3 flex items-center gap-3">
+                  <button
+                    className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/8 bg-white/[0.03] text-sm text-slate-200 transition hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-35"
+                    disabled={calendarMonthIndex === 0}
+                    onClick={() => setCalendarMonthIndex((value) => Math.max(0, value - 1))}
+                    type="button"
+                  >
+                    ←
+                  </button>
+                  <div>
+                    <div className="font-[family:var(--font-display)] text-3xl font-semibold tracking-tight text-white">
+                      {currentCalendar.monthLabel}
+                    </div>
+                    <div className="mt-1 text-sm text-slate-400">
+                      已覆盖 {calendarCoverageCount}/{calendarPastDayCount || currentCalendar.days.length} 天，完整率 {calendarCoverageLabel}
+                    </div>
+                  </div>
+                  <button
+                    className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/8 bg-white/[0.03] text-sm text-slate-200 transition hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-35"
+                    disabled={calendarMonthIndex === syncCalendarMonths.length - 1}
+                    onClick={() => setCalendarMonthIndex((value) => Math.min(syncCalendarMonths.length - 1, value + 1))}
+                    type="button"
+                  >
+                    →
+                  </button>
+                </div>
               </div>
-              <button
-                className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/8 bg-white/[0.03] text-sm text-slate-200 transition hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-35"
-                disabled={calendarMonthIndex === syncCalendarMonths.length - 1}
-                onClick={() => setCalendarMonthIndex((value) => Math.min(syncCalendarMonths.length - 1, value + 1))}
-                type="button"
-              >
-                →
-              </button>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <AccentPill tone="emerald">已拉全 {calendarSummary.complete}</AccentPill>
+                <AccentPill tone="amber">待补齐 {calendarSummary.partial}</AccentPill>
+                <AccentPill tone="rose">无数据 {calendarSummary.empty}</AccentPill>
+              </div>
             </div>
 
-            <div className="mt-4 rounded-[1.4rem] border border-white/6 bg-black/10 px-3 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
-              <div className="grid grid-cols-[10px_auto] items-start gap-3">
-                <div className="grid grid-rows-7 gap-1.5 pt-[2px] text-[10px] uppercase tracking-[0.18em] text-slate-600">
-                  {["一", "", "三", "", "五", "", "日"].map((label, index) => (
-                    <span className="flex h-[13px] items-center justify-center" key={`${label}-${index}`}>
-                      {label}
-                    </span>
-                  ))}
-                </div>
-
-                <div>
-                  <div
-                    className="grid grid-flow-col grid-rows-7 gap-1.5"
-                    style={{ gridTemplateRows: "repeat(7, 13px)", gridAutoColumns: "13px" }}
-                  >
-                    {heatmapCells.map((cell) => {
-                      if (!cell.day) {
-                        return <div className="h-[13px] w-[13px] rounded-[3px]" key={cell.key} />
-                      }
-
-                      const day = cell.day
-                      const isSelected = effectiveSelectedCalendarDate === day.date
-
-                      return (
-                        <button
-                          aria-label={`${day.date} ${CALENDAR_STATUS_META[day.status].label}`}
-                          className={`h-[13px] w-[13px] rounded-[3px] border transition duration-150 ${CALENDAR_STATUS_META[day.status].squareClassName} ${
-                            isSelected ? "scale-[1.14] border-cyan-200/60 ring-2 ring-cyan-300/45" : ""
-                          } ${day.isToday && !isSelected ? "ring-1 ring-white/20" : ""}`}
-                          key={cell.key}
-                          onClick={() => setSelectedCalendarDate(day.date)}
-                          title={`${day.date} · ${CALENDAR_STATUS_META[day.status].label}`}
-                          type="button"
-                        />
-                      )
-                    })}
-                  </div>
-
-                  <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-400">
-                    {(["future", "partial", "empty", "complete"] as SyncCalendarDayStatus[]).map((status) => (
-                      <span className="inline-flex items-center gap-1.5" key={status}>
-                        <span className={`h-[8px] w-[8px] rounded-[2px] border ${CALENDAR_STATUS_META[status].squareClassName}`} />
-                        {CALENDAR_STATUS_META[status].label}
+            <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_280px]">
+              <div className="rounded-[1.5rem] border border-white/6 bg-black/10 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
+                <div className="grid grid-cols-[14px_minmax(0,1fr)] items-start gap-3">
+                  <div className="grid grid-rows-7 gap-2 pt-[1px] text-[10px] uppercase tracking-[0.18em] text-slate-600">
+                    {["一", "", "三", "", "五", "", "日"].map((label, index) => (
+                      <span className="flex h-[14px] items-center justify-center" key={`${label}-${index}`}>
+                        {label}
                       </span>
                     ))}
                   </div>
 
-                  {selectedCalendarDay ? (
-                    <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2 text-xs text-slate-300">
-                      <span className="font-medium text-white">{selectedCalendarDay.date}</span>
-                      <AccentPill tone={CALENDAR_STATUS_META[selectedCalendarDay.status].pillTone}>
-                        {CALENDAR_STATUS_META[selectedCalendarDay.status].label}
-                      </AccentPill>
-                      <span>Daily {selectedCalendarDay.metricComplete ? "完整" : selectedCalendarDay.hasMetric ? "待补齐" : "无"}</span>
-                      <span>
-                        活动
-                        {selectedCalendarDay.activityCount > 0
-                          ? selectedCalendarDay.incompleteActivityCount > 0
-                            ? ` ${selectedCalendarDay.activityCount} / 缺口 ${selectedCalendarDay.incompleteActivityCount}`
-                            : ` ${selectedCalendarDay.activityCount} 完整`
-                          : " 无"}
-                      </span>
-                      {selectedCalendarDay.isToday ? <span className="text-slate-500">今日默认按待补齐处理</span> : null}
-                    </div>
-                  ) : null}
+                  <div className="overflow-x-auto pb-1">
+                    <div
+                      className="grid min-w-max grid-flow-col grid-rows-7 gap-2"
+                      style={{ gridTemplateRows: "repeat(7, 14px)", gridAutoColumns: "14px" }}
+                    >
+                      {heatmapCells.map((cell) => {
+                        if (!cell.day) {
+                          return <div className="h-[14px] w-[14px] rounded-[4px]" key={cell.key} />
+                        }
 
-                  <div className="mt-3 flex flex-wrap items-center gap-3 text-[11px] text-slate-500">
-                    <span>灰 {calendarSummary.future}</span>
-                    <span>黄 {calendarSummary.partial}</span>
-                    <span>红 {calendarSummary.empty}</span>
-                    <span>绿 {calendarSummary.complete}</span>
+                        const day = cell.day
+                        const isSelected = effectiveSelectedCalendarDate === day.date
+
+                        return (
+                          <button
+                            aria-label={`${day.date} ${CALENDAR_STATUS_META[day.status].label}`}
+                            aria-pressed={isSelected}
+                            className={`h-[14px] w-[14px] rounded-[4px] border transition duration-150 ${CALENDAR_STATUS_META[day.status].squareClassName} ${
+                              isSelected ? "scale-[1.12] border-cyan-200/60 ring-2 ring-cyan-300/45" : ""
+                            } ${day.isToday && !isSelected ? "ring-1 ring-white/20" : ""}`}
+                            key={cell.key}
+                            onClick={() => setSelectedCalendarDate(day.date)}
+                            title={`${day.date} · ${CALENDAR_STATUS_META[day.status].label}`}
+                            type="button"
+                          />
+                        )
+                      })}
+                    </div>
                   </div>
                 </div>
               </div>
+
+              <SubtleCard className="flex h-full flex-col justify-between p-4">
+                {selectedCalendarDay ? (
+                  <>
+                    <div>
+                      <div className="text-[11px] uppercase tracking-[0.24em] text-slate-500">Selected Day</div>
+                      <div className="mt-3 flex items-start justify-between gap-3">
+                        <div>
+                          <div className="font-[family:var(--font-display)] text-3xl font-semibold tracking-tight text-white">
+                            {selectedCalendarDay.dayNumber}
+                          </div>
+                          <div className="mt-1 text-sm text-slate-400">{selectedCalendarDay.date}</div>
+                        </div>
+                        <AccentPill tone={CALENDAR_STATUS_META[selectedCalendarDay.status].pillTone}>
+                          {CALENDAR_STATUS_META[selectedCalendarDay.status].label}
+                        </AccentPill>
+                      </div>
+                    </div>
+
+                    <div className="mt-4 space-y-3">
+                      <div className="rounded-2xl border border-white/8 bg-white/[0.03] px-4 py-3">
+                        <div className="text-xs text-slate-500">Daily 状态</div>
+                        <div className="mt-1 text-sm font-medium text-slate-100">{selectedCalendarMetricLabel}</div>
+                      </div>
+                      <div className="rounded-2xl border border-white/8 bg-white/[0.03] px-4 py-3">
+                        <div className="text-xs text-slate-500">活动状态</div>
+                        <div className="mt-1 text-sm font-medium text-slate-100">{selectedCalendarActivityLabel}</div>
+                      </div>
+                    </div>
+
+                    <p className="mt-4 text-sm leading-6 text-slate-400">
+                      {selectedCalendarDay.isToday ? "今天默认记为待补齐，避免把尚未同步完的数据误判为缺失。" : CALENDAR_STATUS_META[selectedCalendarDay.status].description}
+                    </p>
+                  </>
+                ) : (
+                  <div className="text-sm text-slate-500">选择一个日期查看同步状态。</div>
+                )}
+              </SubtleCard>
             </div>
-          </SurfaceCard>
-        </div>
+
+            <div className="flex flex-col gap-3 rounded-[1.25rem] border border-white/8 bg-white/[0.025] px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-[11px] text-slate-400">
+                {(["future", "partial", "empty", "complete"] as SyncCalendarDayStatus[]).map((status) => (
+                  <span className="inline-flex items-center gap-1.5" key={status}>
+                    <span className={`h-[8px] w-[8px] rounded-[2px] border ${CALENDAR_STATUS_META[status].squareClassName}`} />
+                    {CALENDAR_STATUS_META[status].label}
+                  </span>
+                ))}
+              </div>
+
+              <div className="flex flex-wrap items-center gap-3 text-[11px] text-slate-500">
+                <span>灰 {calendarSummary.future}</span>
+                <span>黄 {calendarSummary.partial}</span>
+                <span>红 {calendarSummary.empty}</span>
+                <span>绿 {calendarSummary.complete}</span>
+              </div>
+            </div>
+          </div>
+        </SurfaceCard>
       ) : null}
       {backfillJob ? (
         <SurfaceCard className="p-6">
