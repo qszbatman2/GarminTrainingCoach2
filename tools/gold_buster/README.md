@@ -14,7 +14,20 @@ python -m tools.gold_buster audit --days 7
 
 ```powershell
 pip install -r tools/gold_buster/requirements.txt
-$env:DEEPSEEK_API_KEY="your-api-key"
+$env:ARK_API_KEY="your-api-key"
+$env:GOLD_BUSTER_MODEL="doubao-seed-1-6-250615"
+```
+
+默认走火山 ARK 的 OpenAI 兼容接口：
+
+```text
+https://ark.cn-beijing.volces.com/api/v3/chat/completions
+```
+
+如需覆盖地址，可设置：
+
+```powershell
+$env:GOLD_BUSTER_API_URL="https://ark.cn-beijing.volces.com/api/v3/chat/completions"
 ```
 
 ## Outputs
@@ -22,4 +35,4 @@ $env:DEEPSEEK_API_KEY="your-api-key"
 - `reports/gold_buster_YYYY-MM-DD.md`
 - `reports/audit_history.json`
 
-The CLI still works without `DEEPSEEK_API_KEY`; it only skips AI classification.
+The CLI still works without `ARK_API_KEY`; it only skips AI classification.

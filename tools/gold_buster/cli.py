@@ -18,6 +18,8 @@ PROJECT_MEMORY_ROOT = Path.home() / ".trae-cn" / "memory" / "projects"
 REPORTS_DIR = Path("reports")
 HISTORY_PATH = REPORTS_DIR / "audit_history.json"
 DEFAULT_PROJECT_HINT = "GarminTrainingCoach2"
+DEFAULT_ARK_API_URL = "https://ark.cn-beijing.volces.com/api/v3/chat/completions"
+DEFAULT_ARK_MODEL = "doubao-seed-1-6-250615"
 TOPIC_RE = re.compile(
     r"\[session_id:\s*(?P<session_id>[^\s|]+)\s*\|\s*topic_summary_time:\s*(?P<time>[^\]]+)\](?P<summary>.*)"
 )
@@ -121,7 +123,8 @@ def run_audit(args: argparse.Namespace) -> int:
     args.out_dir.mkdir(parents=True, exist_ok=True)
     history_path = args.out_dir / "audit_history.json"
     history = load_history(history_path)
-    audit_enabled = not args.no_ai and bool(os.getenv("DEEPSEEK_API_KEY"))
+    provider = get_model_provider()
+    audit_enabled = not args.no_ai and bool(provider["api_key"])
 
     rows = []
     for task in tasks:
@@ -132,7 +135,7 @@ def run_audit(args: argparse.Namespace) -> int:
         rows.append((task, audit))
 
     save_history(history_path, history)
-    report = render_report(rows, args.days, audit_enabled)
+    report = render_report(rows, args.days, audit_enabled, provider["name"])
     report_path = args.out_dir / f"gold_buster_{dt.date.today().isoformat()}.md"
     report_path.write_text(report, encoding="utf-8")
     print(report)
@@ -308,20 +311,21 @@ def get_audit(task: TaskRecord, history: dict[str, Any], audit_enabled: bool, re
             "task_name": task.task_name,
             "content_hash": task.content_hash,
             "is_gold_plating": None,
-            "reason": "未配置 DEEPSEEK_API_KEY，仅完成本地轮次与 Token 估算。",
+            "reason": "未配置 ARK_API_KEY，仅完成本地轮次与 Token 估算。",
             "confidence": 0.0,
             "audited_at": now_iso(),
         }
     else:
-        audit = call_deepseek(task)
+        audit = call_model_api(task)
     history[task.task_id] = audit
     return audit
 
 
-def call_deepseek(task: TaskRecord) -> dict[str, Any]:
-    api_key = os.getenv("DEEPSEEK_API_KEY", "")
-    model = os.getenv("GOLD_BUSTER_MODEL", "deepseek-chat")
-    url = os.getenv("GOLD_BUSTER_API_URL", "https://api.deepseek.com/chat/completions")
+def call_model_api(task: TaskRecord) -> dict[str, Any]:
+    provider = get_model_provider()
+    api_key = provider["api_key"]
+    model = provider["model"]
+    url = provider["api_url"]
     payload = {
         "model": model,
         "temperature": 0.2,
@@ -365,10 +369,35 @@ def call_deepseek(task: TaskRecord) -> dict[str, Any]:
             "task_name": task.task_name,
             "content_hash": task.content_hash,
             "is_gold_plating": None,
-            "reason": f"AI 审计失败：{error}",
+            "reason": f"{provider['name']} 审计失败：{error}",
             "confidence": 0.0,
             "audited_at": now_iso(),
         }
+
+
+def get_model_provider() -> dict[str, str]:
+    api_key = (
+        os.getenv("ARK_API_KEY")
+        or os.getenv("GOLD_BUSTER_API_KEY")
+        or os.getenv("DEEPSEEK_API_KEY")
+        or ""
+    )
+    api_url = os.getenv("GOLD_BUSTER_API_URL", DEFAULT_ARK_API_URL)
+    model = os.getenv("GOLD_BUSTER_MODEL", DEFAULT_ARK_MODEL)
+
+    if "deepseek.com" in api_url:
+        name = "DeepSeek"
+    elif "volces.com" in api_url or os.getenv("ARK_API_KEY"):
+        name = "火山 ARK"
+    else:
+        name = "OpenAI-Compatible"
+
+    return {
+        "name": name,
+        "api_key": api_key,
+        "api_url": api_url,
+        "model": model,
+    }
 
 
 def build_audit_prompt(task: TaskRecord) -> str:
@@ -399,13 +428,15 @@ def strip_json_fence(text: str) -> str:
     return text.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
 
 
-def render_report(rows: list[tuple[TaskRecord, dict[str, Any]]], days: int, audit_enabled: bool) -> str:
+def render_report(
+    rows: list[tuple[TaskRecord, dict[str, Any]]], days: int, audit_enabled: bool, provider_name: str
+) -> str:
     total_tokens = sum(task.estimated_tokens for task, _ in rows)
     gold_tokens = sum(
         task.estimated_tokens for task, audit in rows if audit.get("is_gold_plating") is True
     )
     gold_percent = (gold_tokens / total_tokens * 100) if total_tokens else 0
-    mode = "AI 审计" if audit_enabled else "本地估算（未配置 API Key）"
+    mode = f"AI 审计（{provider_name}）" if audit_enabled else "本地估算（未配置 API Key）"
 
     lines = [
         "# Project Gold-Buster 审计报告",
