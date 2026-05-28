@@ -173,6 +173,16 @@ function formatActivityDateTimeLabel(date: Date | null) {
   return formatShanghaiDateTime(date, { includeYear: false })
 }
 
+function hasNumericValue(value: string) {
+  return /\d/.test(value)
+}
+
+function getLatestMetricTileClass(value: string) {
+  return hasNumericValue(value)
+    ? "border-white/8 bg-white/[0.035]"
+    : "border-white/[0.04] bg-white/[0.018] text-slate-500"
+}
+
 function getTopLevelKeys(raw: unknown) {
   if (!raw || typeof raw !== "object") {
     return []
@@ -336,20 +346,14 @@ function StackedColumnChart({
                 <div className="flex h-full w-8 flex-col-reverse overflow-hidden rounded-full bg-white/[0.05] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.04)]">
                   {item.segments.map((segment) => (
                     <div
-                      className="group/segment relative w-full"
+                      className="w-full"
                       key={segment.key}
                       title={segment.tooltip}
                       style={{
                         height: `${Math.max((segment.value / maxTotal) * 100, segment.value > 0 ? 4 : 0)}%`,
                         backgroundColor: segment.color,
                       }}
-                    >
-                      {segment.tooltip ? (
-                        <div className="pointer-events-none absolute left-1/2 top-1/2 z-10 hidden -translate-x-1/2 -translate-y-1/2 whitespace-nowrap rounded-full border border-white/10 bg-slate-950/92 px-2.5 py-1 text-[11px] text-white shadow-2xl group-hover/segment:block">
-                          {segment.tooltip}
-                        </div>
-                      ) : null}
-                    </div>
+                    />
                   ))}
                 </div>
               </div>
@@ -733,6 +737,9 @@ export function DataExplorer({ metricTotal, metrics, activityTotal, activities, 
       startedAtLabel: formatActivityDateTimeLabel(startedAt),
       endedAtLabel: formatActivityDateTimeLabel(endedAt),
       typeLabel: formatActivityType(latestActivity.type),
+      durationLabel: formatDuration(latestActivity.duration),
+      distanceLabel: formatDistance(latestActivity.distance),
+      recoveryLabel: formatNumber(toHours(values.recoveryHours), 1, " h"),
     }
   }, [latestActivities])
 
@@ -911,27 +918,33 @@ export function DataExplorer({ metricTotal, metrics, activityTotal, activities, 
                 <div className="mt-3 font-[family:var(--font-display)] text-3xl font-semibold tracking-tight text-white">{latestActivitySummary.name}</div>
                 <div className="mt-3 flex flex-wrap gap-2">
                   <AccentPill tone="cyan">{latestActivitySummary.typeLabel}</AccentPill>
-                  <AccentPill tone="neutral">{latestActivitySummary.date}</AccentPill>
-                  <AccentPill tone="neutral">{formatDuration(latestActivitySummary.duration)}</AccentPill>
-                  <AccentPill tone="neutral">{formatDistance(latestActivitySummary.distance)}</AccentPill>
+                  <AccentPill tone="neutral">开始 {latestActivitySummary.startedAtLabel}</AccentPill>
+                  <AccentPill tone="neutral">结束 {latestActivitySummary.endedAtLabel}</AccentPill>
                 </div>
               </div>
-              <div className="rounded-[1.35rem] border border-cyan-400/16 bg-cyan-400/8 px-4 py-3 text-right">
-                <div className="text-xs uppercase tracking-[0.18em] text-cyan-200/72">训练刺激</div>
-                <div className="mt-2 text-3xl font-semibold text-white">{formatNumber(latestActivitySummary.trainingLoad)}</div>
-                <div className="mt-1 text-sm text-slate-300">Training Load</div>
+              <div className="grid min-w-[15rem] gap-3 sm:grid-cols-2">
+                <div className={`rounded-[1.35rem] border px-4 py-3 text-right ${hasNumericValue(latestActivitySummary.durationLabel) ? "border-cyan-400/16 bg-cyan-400/8" : "border-white/[0.04] bg-white/[0.018]"}`}>
+                  <div className="text-xs uppercase tracking-[0.18em] text-cyan-200/72">时长</div>
+                  <div className="mt-2 text-3xl font-semibold text-white">{latestActivitySummary.durationLabel}</div>
+                  <div className="mt-1 text-sm text-slate-300">Duration</div>
+                </div>
+                <div className={`rounded-[1.35rem] border px-4 py-3 text-right ${hasNumericValue(latestActivitySummary.distanceLabel) ? "border-violet-400/16 bg-violet-400/8" : "border-white/[0.04] bg-white/[0.018]"}`}>
+                  <div className="text-xs uppercase tracking-[0.18em] text-violet-200/72">总距离</div>
+                  <div className="mt-2 text-3xl font-semibold text-white">{latestActivitySummary.distanceLabel}</div>
+                  <div className="mt-1 text-sm text-slate-300">Distance</div>
+                </div>
               </div>
             </div>
 
             <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-              <MetricTile detail="上海时间" label="开始时间" value={latestActivitySummary.startedAtLabel} />
-              <MetricTile detail="上海时间" label="结束时间" value={latestActivitySummary.endedAtLabel} />
-              <MetricTile detail="最近一次活动均值" label="平均心率" value={formatNumber(latestActivitySummary.averageHeartRate, 0, " bpm")} />
-              <MetricTile detail="峰值响应" label="最大心率" value={formatNumber(latestActivitySummary.maxHeartRate, 0, " bpm")} />
-              <MetricTile detail="有功率计时优先显示" label="AP" value={formatNumber(latestActivitySummary.averagePower, 0, " W")} />
-              <MetricTile detail="有功率计时优先显示" label="NP" value={formatNumber(latestActivitySummary.normalizedPower, 0, " W")} />
-              <MetricTile detail="骑行优先，跑步会显示步频" label="平均踏频" value={formatNumber(latestActivitySummary.averageCadence, 0, " rpm")} />
-              <MetricTile detail="有氧 / 无氧" label="训练效果" value={`${formatNumber(latestActivitySummary.aerobicTrainingEffect, 1)} / ${formatNumber(latestActivitySummary.anaerobicTrainingEffect, 1)}`} />
+              <MetricTile className={getLatestMetricTileClass(formatNumber(latestActivitySummary.averageHeartRate, 0, " bpm"))} detail="最近一次活动均值" label="平均心率" value={formatNumber(latestActivitySummary.averageHeartRate, 0, " bpm")} />
+              <MetricTile className={getLatestMetricTileClass(formatNumber(latestActivitySummary.maxHeartRate, 0, " bpm"))} detail="峰值响应" label="最大心率" value={formatNumber(latestActivitySummary.maxHeartRate, 0, " bpm")} />
+              <MetricTile className={getLatestMetricTileClass(formatNumber(latestActivitySummary.averagePower, 0, " W"))} detail="有功率计时优先显示" label="AP" value={formatNumber(latestActivitySummary.averagePower, 0, " W")} />
+              <MetricTile className={getLatestMetricTileClass(formatNumber(latestActivitySummary.normalizedPower, 0, " W"))} detail="有功率计时优先显示" label="NP" value={formatNumber(latestActivitySummary.normalizedPower, 0, " W")} />
+              <MetricTile className={getLatestMetricTileClass(formatNumber(latestActivitySummary.averageCadence, 0, " rpm"))} detail="骑行踏频 / 跑步步频" label="平均踏频" value={formatNumber(latestActivitySummary.averageCadence, 0, " rpm")} />
+              <MetricTile className={getLatestMetricTileClass(latestActivitySummary.recoveryLabel)} detail="Garmin 最近一次训练建议" label="恢复时间" value={latestActivitySummary.recoveryLabel} />
+              <MetricTile className={getLatestMetricTileClass(formatNumber(latestActivitySummary.trainingLoad))} detail="训练刺激量级" label="Training Load" value={formatNumber(latestActivitySummary.trainingLoad)} />
+              <MetricTile className={getLatestMetricTileClass(`${formatNumber(latestActivitySummary.aerobicTrainingEffect, 1)} / ${formatNumber(latestActivitySummary.anaerobicTrainingEffect, 1)}`)} detail="有氧 / 无氧" label="训练效果" value={`${formatNumber(latestActivitySummary.aerobicTrainingEffect, 1)} / ${formatNumber(latestActivitySummary.anaerobicTrainingEffect, 1)}`} />
             </div>
           </SurfaceCard>
         ) : (
