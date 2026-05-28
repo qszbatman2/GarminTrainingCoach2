@@ -33,11 +33,6 @@ const NAV_ITEMS: NavItem[] = [
     match: (pathname) => pathname === "/data",
   },
   {
-    href: "/data/calendar",
-    label: "数据日历",
-    match: (pathname) => pathname.startsWith("/data/calendar"),
-  },
-  {
     href: "/data/sync",
     label: "同步中心",
     match: (pathname) => pathname.startsWith("/data/sync"),

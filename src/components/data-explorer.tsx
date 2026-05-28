@@ -851,14 +851,9 @@ export function DataExplorer({ metricTotal, metrics, activityTotal, activities, 
         <SurfaceCard className="p-5">
         <SectionHeader
           actions={
-            <>
-              <Link className="rounded-full border border-white/10 bg-white/[0.04] px-5 py-3 text-sm font-medium text-slate-200 transition hover:bg-white/[0.08]" href="/data/calendar">
-                查看数据日历
-              </Link>
-              <Link className="rounded-full bg-cyan-300 px-5 py-3 text-sm font-medium text-slate-950 transition hover:bg-cyan-200" href="/data/sync">
-                查看同步状态
-              </Link>
-            </>
+            <Link className="rounded-full bg-cyan-300 px-5 py-3 text-sm font-medium text-slate-950 transition hover:bg-cyan-200" href="/data/sync">
+              查看同步状态
+            </Link>
           }
           description="把睡眠结构、恢复信号和当日建议聚合在一屏内，先判断恢复，再决定怎么练。"
           eyebrow="Recovery Overview"
