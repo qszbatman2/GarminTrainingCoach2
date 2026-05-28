@@ -1,7 +1,7 @@
 import { auth } from "@/auth"
 import { AuthPanel } from "@/components/auth-panel"
 import { DashboardShell } from "@/components/dashboard-shell"
-import { getLatestSavedAnalysisReport } from "@/lib/analysis-report"
+import { getOrCreateLatestAnalysisReport } from "@/lib/analysis-report"
 import prisma from "@/lib/prisma"
 
 export default async function Home() {
@@ -20,10 +20,29 @@ export default async function Home() {
       garminEmail: true,
       trainingGoal: true,
       metrics: {
-        orderBy: { date: "desc" },
-        take: 1,
+        orderBy: { date: "asc" },
         select: {
+          id: true,
           date: true,
+          sleepScore: true,
+          restingHr: true,
+          hrv: true,
+          stress: true,
+          raw: true,
+          createdAt: true,
+        },
+      },
+      activities: {
+        orderBy: { date: "asc" },
+        select: {
+          id: true,
+          name: true,
+          type: true,
+          distance: true,
+          duration: true,
+          date: true,
+          raw: true,
+          createdAt: true,
         },
       },
     },
@@ -36,18 +55,33 @@ export default async function Home() {
   let initialAnalysisReport = null
   if (user.garminEmail && user.metrics.length > 0) {
     try {
-      initialAnalysisReport = await getLatestSavedAnalysisReport(user.id)
+      initialAnalysisReport = await getOrCreateLatestAnalysisReport({
+        userId: user.id,
+        trainingGoal: user.trainingGoal,
+        metrics: user.metrics,
+        activities: user.activities,
+      })
     } catch (error) {
       console.error("[Trae] Fix: failed to prefetch homepage analysis report", error)
     }
   }
 
+  const latestMetricDate = user.metrics.length > 0 ? user.metrics[user.metrics.length - 1]?.date.toISOString().slice(0, 10) ?? null : null
+  const latestDataSyncAt = [...user.metrics, ...user.activities].reduce<string | null>((latest, item) => {
+    const createdAt = item.createdAt.toISOString()
+    if (!latest || new Date(createdAt).getTime() > new Date(latest).getTime()) {
+      return createdAt
+    }
+
+    return latest
+  }, null)
+
   return (
     <DashboardShell
       garminEmail={user.garminEmail ?? ""}
       initialAnalysisReport={initialAnalysisReport}
-      latestMetricDate={user.metrics[0]?.date.toISOString().slice(0, 10) ?? null}
-      userEmail={user.email}
+      latestDataSyncAt={latestDataSyncAt}
+      latestMetricDate={latestMetricDate}
       userName={user.name ?? user.email.split("@")[0]}
       trainingGoal={user.trainingGoal ?? ""}
     />

@@ -1,9 +1,7 @@
-import Link from "next/link"
-
 import { auth } from "@/auth"
 import { AuthPanel } from "@/components/auth-panel"
 import { DataExplorer } from "@/components/data-explorer"
-import { AppPage, PageHero } from "@/components/design-system"
+import { AppPage } from "@/components/design-system"
 import { getLatestSavedAnalysisReport } from "@/lib/analysis-report"
 import prisma from "@/lib/prisma"
 
@@ -21,7 +19,6 @@ export default async function DataPage() {
     where: { id: session.user.id },
     select: {
       id: true,
-      email: true,
       trainingGoal: true,
       _count: {
         select: {
@@ -74,47 +71,31 @@ export default async function DataPage() {
 
   return (
     <AppPage>
-      <PageHero
-        actions={
-          <>
-            <Link className="rounded-full border border-white/12 bg-white/[0.04] px-5 py-3 text-sm text-slate-100 transition hover:bg-white/[0.08]" href="/data/sync">
-              查看同步状态
-            </Link>
-            <Link className="rounded-full border border-cyan-400/25 bg-cyan-400/10 px-5 py-3 text-sm text-cyan-100 transition hover:bg-cyan-400/15" href="/">
-              返回首页
-            </Link>
-          </>
-        }
-        description="这里专门负责数据呈现和分析，集中查看 AI 结论、关键趋势、单日深度分析和原始字段核对。"
-        eyebrow="Data Analysis"
-        title="已同步数据分析"
+      <DataExplorer
+        activityTotal={user._count.activities}
+        activities={user.activities.map((activity) => ({
+          id: activity.id,
+          garminId: activity.garminId,
+          name: activity.name,
+          type: activity.type,
+          distance: activity.distance,
+          duration: activity.duration,
+          date: activity.date.toISOString().slice(0, 10),
+          raw: activity.raw,
+        }))}
+        initialAnalysisReport={initialAnalysisReport}
+        metrics={user.metrics.map((metric) => ({
+          id: metric.id,
+          date: metric.date.toISOString().slice(0, 10),
+          sleepScore: metric.sleepScore,
+          hrv: metric.hrv,
+          restingHr: metric.restingHr,
+          stress: metric.stress,
+          raw: metric.raw,
+        }))}
+        metricTotal={user._count.metrics}
+        trainingGoal={user.trainingGoal ?? ""}
       />
-        <DataExplorer
-          activityTotal={user._count.activities}
-          activities={user.activities.map((activity) => ({
-            id: activity.id,
-            garminId: activity.garminId,
-            name: activity.name,
-            type: activity.type,
-            distance: activity.distance,
-            duration: activity.duration,
-            date: activity.date.toISOString().slice(0, 10),
-            raw: activity.raw,
-          }))}
-          metrics={user.metrics.map((metric) => ({
-            id: metric.id,
-            date: metric.date.toISOString().slice(0, 10),
-            sleepScore: metric.sleepScore,
-            hrv: metric.hrv,
-            restingHr: metric.restingHr,
-            stress: metric.stress,
-            raw: metric.raw,
-          }))}
-          metricTotal={user._count.metrics}
-          userEmail={user.email}
-          initialAnalysisReport={initialAnalysisReport}
-          trainingGoal={user.trainingGoal ?? ""}
-        />
     </AppPage>
   )
 }

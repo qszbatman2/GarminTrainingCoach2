@@ -1,4 +1,4 @@
-import { AppPage, PageHero, SurfaceCard, SubtleCard } from "@/components/design-system"
+import { AppPage, SurfaceCard, SubtleCard } from "@/components/design-system"
 
 function SkeletonBlock({ className }: { className: string }) {
   return <div className={`animate-pulse rounded-2xl bg-white/10 ${className}`} />
@@ -7,18 +7,6 @@ function SkeletonBlock({ className }: { className: string }) {
 export default function Loading() {
   return (
     <AppPage>
-      <PageHero
-        actions={
-          <>
-            <div className="h-11 w-28 animate-pulse rounded-full bg-white/10" />
-            <div className="h-11 w-28 animate-pulse rounded-full bg-cyan-400/15" />
-          </>
-        }
-        description="历史数据正在分段加载，先渲染页面骨架，避免整页阻塞。"
-        eyebrow="Data Analysis"
-        title="数据分析加载中"
-      />
-
       <SurfaceCard className="p-7">
         <div className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
           <SubtleCard className="p-6">

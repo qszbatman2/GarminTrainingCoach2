@@ -31,7 +31,6 @@ type ActivityItem = {
 }
 
 type DataExplorerProps = {
-  userEmail: string
   metricTotal: number
   metrics: MetricItem[]
   activityTotal: number
@@ -574,7 +573,7 @@ function buildFieldEntries(metric: EnrichedMetric | null): FieldEntry[] {
   ]
 }
 
-export function DataExplorer({ userEmail, metricTotal, metrics, activityTotal, activities, initialAnalysisReport, trainingGoal }: DataExplorerProps) {
+export function DataExplorer({ metricTotal, metrics, activityTotal, activities, initialAnalysisReport, trainingGoal }: DataExplorerProps) {
   const [metricsState, setMetricsState] = useState(metrics)
   const [activitiesState, setActivitiesState] = useState(activities)
   const [analysisReport, setAnalysisReport] = useState(initialAnalysisReport)
@@ -823,26 +822,16 @@ export function DataExplorer({ userEmail, metricTotal, metrics, activityTotal, a
           <RecoveryCountdownCard className="max-w-none" report={analysisReport} title="Ready To Train" />
           <SurfaceCard className="p-5">
             <SectionHeader
-              actions={
-                <>
-                  <Link className="rounded-full border border-white/10 bg-white/[0.04] px-4 py-2.5 text-sm font-medium text-slate-200 transition hover:bg-white/[0.08]" href="/data/calendar">
-                    数据日历
-                  </Link>
-                  <Link className="rounded-full bg-cyan-300 px-4 py-2.5 text-sm font-medium text-slate-950 transition hover:bg-cyan-200" href="/data/sync">
-                    同步状态
-                  </Link>
-                </>
-              }
-              description="把导航、样本量和最新活动压缩到一个控制面板里，避免顶部再空一整行。"
-              eyebrow="Data Controls"
-              title="数据控制台"
+              description="这里只保留当前分析范围和样本量，导航与账号状态统一收进顶部 Topbar。"
+              eyebrow="Data Scope"
+              title="分析范围"
             />
 
             <div className="mt-4 grid gap-3 sm:grid-cols-2">
               <MetricTile detail="当前已载入前端" label="Daily 样本" value={String(metricsState.length)} />
               <MetricTile detail="当前已载入前端" label="活动样本" value={String(activitiesState.length)} />
               <MetricTile detail="当前分析日期" label="选中日期" value={selectedMetric?.date ?? "--"} />
-              <MetricTile detail="当前查看账号" label="用户" value={userEmail} />
+              <MetricTile detail="当前 AI 分析口径" label="训练目标" value={trainingGoal.trim() ? "已设置" : "未设置"} />
             </div>
           </SurfaceCard>
 
@@ -1034,7 +1023,6 @@ export function DataExplorer({ userEmail, metricTotal, metrics, activityTotal, a
                   {item.label}
                 </button>
               ))}
-              <div className="rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-sm text-slate-300">{userEmail}</div>
             </div>
 
             <div className="mt-3">

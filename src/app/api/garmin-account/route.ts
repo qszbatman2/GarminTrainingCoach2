@@ -34,3 +34,26 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }
+
+export async function DELETE() {
+  const session = await auth()
+
+  if (!session?.user?.id) {
+    return NextResponse.json({ error: "请先登录" }, { status: 401 })
+  }
+
+  try {
+    await prisma.user.update({
+      where: { id: session.user.id },
+      data: {
+        garminEmail: null,
+        garminPassword: null,
+      },
+    })
+
+    return NextResponse.json({ success: true })
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "退出 Garmin 账号失败"
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
+}

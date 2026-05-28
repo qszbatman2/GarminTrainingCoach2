@@ -45,7 +45,6 @@ export type SyncCalendarMonth = {
 }
 
 type DataSyncCenterProps = {
-  userEmail: string
   garminEmail: string | null
   metricsCount: number
   activitiesCount: number
@@ -150,7 +149,6 @@ const CALENDAR_STATUS_META: Record<
 }
 
 export function DataSyncCenter({
-  userEmail,
   garminEmail,
   metricsCount,
   activitiesCount,
@@ -370,9 +368,6 @@ export function DataSyncCenter({
           <div>
             <div className="text-xs uppercase tracking-[0.25em] text-cyan-300/72">Sync Overview</div>
             <h2 className="mt-3 text-3xl font-semibold tracking-tight text-white">同步控制台</h2>
-            <div className="mt-3 text-sm text-slate-400">
-              {userEmail} · {garminEmail}
-            </div>
             <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
               <MetricTile detail={`最近 30 天覆盖 ${last30MetricCount}/30`} label="Daily 快照" value={`${metricsCount}`} />
               <MetricTile detail={`近 30 天活动日 ${last30ActivityDays}`} label="活动记录" value={`${activitiesCount}`} />
