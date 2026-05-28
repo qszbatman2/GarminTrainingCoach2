@@ -1,3 +1,5 @@
+import type { Metadata } from "next"
+
 import { auth } from "@/auth"
 import { AuthPanel } from "@/components/auth-panel"
 import { DataSyncCenter, type SyncCalendarDay, type SyncCalendarMonth } from "@/components/data-sync-center"
@@ -16,6 +18,10 @@ import {
 import { getObservedSupportedFieldIds } from "@/lib/sync-supported-fields"
 
 const SYNC_CALENDAR_MONTHS = 12
+
+export const metadata: Metadata = {
+  title: "同步",
+}
 
 function pad(value: number) {
   return String(value).padStart(2, "0")

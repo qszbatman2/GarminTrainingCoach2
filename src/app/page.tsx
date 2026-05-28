@@ -1,9 +1,15 @@
+import type { Metadata } from "next"
+
 import { auth } from "@/auth"
 import { AuthPanel } from "@/components/auth-panel"
 import { DashboardShell } from "@/components/dashboard-shell"
 import { getOrCreateLatestAnalysisReport } from "@/lib/analysis-report"
 import prisma from "@/lib/prisma"
 import { formatShanghaiDateKey } from "@/lib/shanghai-time"
+
+export const metadata: Metadata = {
+  title: "首页-GarminAICoach",
+}
 
 export default async function Home() {
   const session = await auth()

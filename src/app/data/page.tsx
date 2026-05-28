@@ -1,3 +1,5 @@
+import type { Metadata } from "next"
+
 import { auth } from "@/auth"
 import { AuthPanel } from "@/components/auth-panel"
 import { DataExplorer } from "@/components/data-explorer"
@@ -8,6 +10,10 @@ import { formatShanghaiDateKey } from "@/lib/shanghai-time"
 
 const INITIAL_METRICS_LIMIT = 21
 const INITIAL_ACTIVITIES_LIMIT = 12
+
+export const metadata: Metadata = {
+  title: "数据",
+}
 
 export default async function DataPage() {
   const session = await auth()

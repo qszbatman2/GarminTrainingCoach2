@@ -18,7 +18,10 @@ const displayFont = Sora({
 })
 
 export const metadata: Metadata = {
-  title: "GarminTrainingCoach2",
+  title: {
+    template: "%s-GarminAICoach",
+    default: "GarminAICoach",
+  },
   description: "Garmin training insights dashboard",
 }
 
