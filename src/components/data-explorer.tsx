@@ -816,10 +816,47 @@ export function DataExplorer({ userEmail, metricTotal, metrics, activityTotal, a
 
   return (
     <>
-      <div className="flex justify-end">
-        <RecoveryCountdownCard report={analysisReport} />
-      </div>
-      <AITrainingReport initialReport={analysisReport} onReportChange={setAnalysisReport} trainingGoal={trainingGoal} />
+      <section className="grid gap-4 xl:grid-cols-[1.18fr_0.82fr]">
+        <AITrainingReport initialReport={analysisReport} onReportChange={setAnalysisReport} trainingGoal={trainingGoal} />
+
+        <div className="grid gap-4 content-start">
+          <RecoveryCountdownCard className="max-w-none" report={analysisReport} title="Ready To Train" />
+          <SurfaceCard className="p-5">
+            <SectionHeader
+              actions={
+                <>
+                  <Link className="rounded-full border border-white/10 bg-white/[0.04] px-4 py-2.5 text-sm font-medium text-slate-200 transition hover:bg-white/[0.08]" href="/data/calendar">
+                    数据日历
+                  </Link>
+                  <Link className="rounded-full bg-cyan-300 px-4 py-2.5 text-sm font-medium text-slate-950 transition hover:bg-cyan-200" href="/data/sync">
+                    同步状态
+                  </Link>
+                </>
+              }
+              description="把导航、样本量和最新活动压缩到一个控制面板里，避免顶部再空一整行。"
+              eyebrow="Data Controls"
+              title="数据控制台"
+            />
+
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <MetricTile detail="当前已载入前端" label="Daily 样本" value={String(metricsState.length)} />
+              <MetricTile detail="当前已载入前端" label="活动样本" value={String(activitiesState.length)} />
+              <MetricTile detail="当前分析日期" label="选中日期" value={selectedMetric?.date ?? "--"} />
+              <MetricTile detail="当前查看账号" label="用户" value={userEmail} />
+            </div>
+          </SurfaceCard>
+
+          {latestActivities[0] ? (
+            <SurfaceCard className="p-5">
+              <div className="text-[11px] uppercase tracking-[0.24em] text-slate-400">Latest Activity</div>
+              <div className="mt-3 text-xl font-semibold text-white">{latestActivities[0].name}</div>
+              <div className="mt-2 text-sm text-slate-300">
+                {latestActivities[0].date} · {formatDuration(latestActivities[0].duration)} · {formatDistance(latestActivities[0].distance)}
+              </div>
+            </SurfaceCard>
+          ) : null}
+        </div>
+      </section>
 
       <section className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
         <SurfaceCard className="p-5">

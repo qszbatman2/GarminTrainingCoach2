@@ -37,7 +37,15 @@ function countdownTone(diffMs: number): "emerald" | "amber" | "violet" {
   return diffMs <= 6 * 60 * 60 * 1000 ? "amber" : "violet"
 }
 
-export function RecoveryCountdownCard({ report }: { report: TrainingAnalysisPayload | null }) {
+export function RecoveryCountdownCard({
+  report,
+  className = "",
+  title = "Recovery Timer",
+}: {
+  report: TrainingAnalysisPayload | null
+  className?: string
+  title?: string
+}) {
   const [now, setNow] = useState(() => Date.now())
 
   useEffect(() => {
@@ -64,13 +72,13 @@ export function RecoveryCountdownCard({ report }: { report: TrainingAnalysisPayl
   }
 
   return (
-    <SurfaceCard className="w-full max-w-[260px] border-cyan-300/15 bg-[linear-gradient(180deg,rgba(34,211,238,0.12),rgba(8,47,73,0.08))] p-4">
+    <SurfaceCard className={`w-full border-cyan-300/15 bg-[linear-gradient(180deg,rgba(34,211,238,0.12),rgba(8,47,73,0.08))] p-4 ${className}`}>
       <div className="flex items-center justify-between gap-2">
-        <div className="text-[11px] uppercase tracking-[0.24em] text-cyan-200/80">Recovery</div>
+        <div className="text-[11px] uppercase tracking-[0.24em] text-cyan-200/80">{title}</div>
         <AccentPill tone={summary.tone}>Timer</AccentPill>
       </div>
-      <div className="mt-3 text-[1.65rem] font-semibold tracking-tight text-white">{summary.label}</div>
-      <div className="mt-2 text-[11px] text-slate-400">可开始 {formatTime(summary.readyAt)}</div>
+      <div className="mt-3 font-[family:var(--font-display)] text-[1.55rem] font-semibold tracking-tight text-white">{summary.label}</div>
+      <div className="mt-1 text-[11px] text-slate-400">可开始 {formatTime(summary.readyAt)}</div>
     </SurfaceCard>
   )
 }

@@ -105,43 +105,69 @@ export function DashboardShell({
 
   return (
     <AppPage>
-      <SurfaceCard className="flex flex-col gap-4 p-5 lg:flex-row lg:items-center lg:justify-between">
-        <div className="space-y-3">
-          <div className="text-[11px] uppercase tracking-[0.28em] text-cyan-300/72">Training Dashboard</div>
-          <div className="flex flex-wrap items-center gap-2">
-            <h1 className="text-2xl font-semibold tracking-tight text-white">{hasGarminBinding ? `${userName}，先看 AI 结论。` : `${userName}，先绑定 Garmin。`}</h1>
-            {hasGarminBinding ? (
-              latestMetricDate ? (
-                <AccentPill tone="emerald">同步至 {latestMetricDateLabel}</AccentPill>
+      <SurfaceCard className="p-6">
+        <div className={`grid gap-6 ${hasGarminBinding ? "xl:grid-cols-[1.2fr_0.8fr]" : "xl:grid-cols-[1.05fr_0.95fr]"}`}>
+          <div className="space-y-4">
+            <div className="text-[11px] uppercase tracking-[0.28em] text-cyan-300/72">Training Dashboard</div>
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="font-[family:var(--font-display)] text-3xl font-semibold tracking-tight text-white">{hasGarminBinding ? `${userName}，先看今天怎么练。` : `${userName}，先绑定 Garmin。`}</h1>
+              {hasGarminBinding ? (
+                latestMetricDate ? (
+                  <AccentPill tone="emerald">同步至 {latestMetricDateLabel}</AccentPill>
+                ) : (
+                  <AccentPill tone="amber">暂无可分析数据</AccentPill>
+                )
               ) : (
-                <AccentPill tone="amber">暂无可分析数据</AccentPill>
-              )
-            ) : (
-              <AccentPill tone="cyan">待绑定</AccentPill>
-            )}
-            {hasGarminBinding && savedTrainingGoal ? <AccentPill tone="violet">已设置训练目标</AccentPill> : null}
+                <AccentPill tone="cyan">待绑定</AccentPill>
+              )}
+              {hasGarminBinding && savedTrainingGoal ? <AccentPill tone="violet">已设置训练目标</AccentPill> : null}
+            </div>
+            <p className="max-w-2xl text-sm leading-7 text-slate-300">
+              {hasGarminBinding ? "首页聚合今日结论、恢复倒计时、同步状态和目标设置，避免再把关键卡片一张张往下堆。" : "绑定后即可同步 Garmin 数据并生成 AI 训练建议。"}
+            </p>
+            <div className="flex flex-wrap gap-3">
+              {hasGarminBinding ? (
+                <>
+                  <Link className="inline-flex rounded-full border border-cyan-300/30 bg-cyan-300/12 px-4 py-2.5 text-sm text-cyan-100 transition hover:bg-cyan-300/20" href="/data">
+                    数据页
+                  </Link>
+                  <Link className="rounded-full border border-white/12 bg-white/[0.04] px-4 py-2.5 text-sm text-slate-100 transition hover:bg-white/[0.08]" href="/data/sync">
+                    同步页
+                  </Link>
+                </>
+              ) : null}
+              <button
+                className="rounded-full border border-white/12 bg-white/[0.04] px-4 py-2.5 text-sm text-slate-100 transition hover:bg-white/[0.08]"
+                onClick={() => signOut({ callbackUrl: "/" })}
+                type="button"
+              >
+                退出登录
+              </button>
+            </div>
           </div>
-          <p className="text-sm text-slate-300">{hasGarminBinding ? "首页只保留训练结论，详细数据和同步任务放到后面。" : "绑定后即可同步数据并生成 AI 训练建议。"}</p>
-        </div>
 
-        <div className="flex flex-wrap gap-3">
-          {hasGarminBinding ? (
-            <>
-              <Link className="inline-flex rounded-full border border-cyan-300/30 bg-cyan-300/12 px-4 py-2.5 text-sm text-cyan-100 transition hover:bg-cyan-300/20" href="/data">
-                数据页
-              </Link>
-              <Link className="rounded-full border border-white/12 bg-white/[0.04] px-4 py-2.5 text-sm text-slate-100 transition hover:bg-white/[0.08]" href="/data/sync">
-                同步页
-              </Link>
-            </>
-          ) : null}
-          <button
-            className="rounded-full border border-white/12 bg-white/[0.04] px-4 py-2.5 text-sm text-slate-100 transition hover:bg-white/[0.08]"
-            onClick={() => signOut({ callbackUrl: "/" })}
-            type="button"
-          >
-            退出登录
-          </button>
+          <div className="grid gap-3 content-start sm:grid-cols-2 xl:grid-cols-1">
+            {hasGarminBinding ? (
+              <>
+                <SubtleCard className="p-4">
+                  <div className="text-[11px] uppercase tracking-[0.24em] text-slate-400">Sync Status</div>
+                  <div className="mt-3 text-2xl font-semibold text-white">{latestMetricDateLabel}</div>
+                  <div className="mt-1 text-sm text-slate-400">{latestMetricDate ? "最近一日 Daily 已完成同步" : "先去同步页拉取首批数据"}</div>
+                </SubtleCard>
+                <SubtleCard className="p-4">
+                  <div className="text-[11px] uppercase tracking-[0.24em] text-slate-400">Garmin</div>
+                  <div className="mt-3 break-all text-base font-semibold text-white">{garminEmail}</div>
+                  <div className="mt-1 text-sm text-slate-400">{savedTrainingGoal ? "训练目标已接入 AI 解释" : "还没有设置训练目标"}</div>
+                </SubtleCard>
+              </>
+            ) : (
+              <SubtleCard className="p-4">
+                <div className="text-[11px] uppercase tracking-[0.24em] text-slate-400">Setup Status</div>
+                <div className="mt-3 text-xl font-semibold text-white">绑定后即可启用首页训练决策。</div>
+                <div className="mt-2 text-sm text-slate-400">先写训练目标，再完成 Garmin 绑定。</div>
+              </SubtleCard>
+            )}
+          </div>
         </div>
       </SurfaceCard>
 
@@ -224,18 +250,16 @@ export function DashboardShell({
       ) : null}
 
       {hasGarminBinding ? (
-        <>
-          <div className="flex justify-end">
-            <RecoveryCountdownCard report={analysisReport} />
-          </div>
+        <section className="grid gap-6 xl:grid-cols-[1.18fr_0.82fr]">
           <AITrainingReport initialReport={analysisReport} onReportChange={setAnalysisReport} trainingGoal={savedTrainingGoal} />
 
-          <section className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
+          <div className="grid gap-6 content-start">
+            <RecoveryCountdownCard className="max-w-none" report={analysisReport} title="Ready To Train" />
             <SurfaceCard className="p-6">
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <div className="text-xs uppercase tracking-[0.25em] text-violet-300/80">Training Goal</div>
-                  <h2 className="mt-2 text-xl font-semibold tracking-tight text-white">目标只保留一处，修改后重新生成 AI 即可。</h2>
+                  <h2 className="mt-2 text-xl font-semibold tracking-tight text-white">目标放在主决策旁边，改完后直接重生成。</h2>
                 </div>
                 <AccentPill tone={savedTrainingGoal ? "violet" : "neutral"}>{savedTrainingGoal ? "已生效" : "未设置"}</AccentPill>
               </div>
@@ -267,13 +291,13 @@ export function DashboardShell({
             <SurfaceCard className="p-6">
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <div className="text-xs uppercase tracking-[0.25em] text-slate-400">Data Status</div>
-                  <h2 className="mt-2 text-xl font-semibold tracking-tight text-white">同步状态</h2>
+                  <div className="text-xs uppercase tracking-[0.25em] text-slate-400">Control Center</div>
+                  <h2 className="mt-2 text-xl font-semibold tracking-tight text-white">同步与入口</h2>
                 </div>
                 <AccentPill tone={latestMetricDate ? "emerald" : "amber"}>{latestMetricDate ? "可分析" : "待同步"}</AccentPill>
               </div>
 
-              <div className="mt-5 grid gap-3 sm:grid-cols-2">
+              <div className="mt-5 grid gap-3">
                 <SubtleCard className="p-4">
                   <div className="text-sm text-slate-400">Garmin 账号</div>
                   <div className="mt-2 break-all text-base font-semibold text-white">{garminEmail}</div>
@@ -283,10 +307,18 @@ export function DashboardShell({
                   <div className="mt-2 text-2xl font-semibold text-white">{latestMetricDateLabel}</div>
                   <div className="mt-1 text-sm text-slate-400">{latestMetricDate ? "最近一日 Daily 已同步" : "先去同步页拉取首批数据"}</div>
                 </SubtleCard>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <Link className="rounded-[1.1rem] border border-cyan-300/20 bg-cyan-300/10 px-4 py-4 text-sm font-medium text-cyan-100 transition hover:bg-cyan-300/15" href="/data">
+                    进入数据页
+                  </Link>
+                  <Link className="rounded-[1.1rem] border border-white/10 bg-white/[0.04] px-4 py-4 text-sm font-medium text-slate-100 transition hover:bg-white/[0.08]" href="/data/sync">
+                    查看同步页
+                  </Link>
+                </div>
               </div>
             </SurfaceCard>
-          </section>
-        </>
+          </div>
+        </section>
       ) : null}
     </AppPage>
   )
