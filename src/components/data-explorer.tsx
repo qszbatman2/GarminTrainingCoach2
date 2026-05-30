@@ -399,7 +399,7 @@ function BodyBatteryTrendChart({
 
       {data.length > 0 ? (
         <>
-          <div className="mt-5 grid grid-cols-[2.5rem_1fr] gap-3">
+          <div className="mx-auto mt-5 grid w-full max-w-[920px] grid-cols-[2.5rem_1fr] gap-3">
             <div className="relative h-56">
               {yTicks.map((tick) => {
                 const top = `${100 - ((tick - bounds.min) / Math.max(bounds.max - bounds.min, 1)) * 100}%`
@@ -463,33 +463,37 @@ function BodyBatteryTrendChart({
                       />
                     )
                   })}
+                </svg>
+                <div className="absolute inset-0">
                   {data.map((point) => {
                     const x = getPointX(point)
                     const y = 100 - ((point.value - bounds.min) / Math.max(bounds.max - bounds.min, 1)) * 100
                     const isHovered = hoveredPointId === point.id
                     return (
-                      <g key={point.id}>
-                        <circle
-                          cx={x}
-                          cy={clamp(y, 0, 100)}
-                          fill={point.phase === "recovery" ? "#67e8f9" : "#f59e0b"}
-                          opacity={isHovered ? 1 : 0.85}
-                          r={isHovered ? 1.35 : 0.72}
-                        />
-                        <circle
-                          className="cursor-crosshair"
-                          cx={x}
-                          cy={clamp(y, 0, 100)}
-                          fill="transparent"
-                          onMouseEnter={() => setHoveredPointId(point.id)}
-                          r={1.8}
-                        >
-                          <title>{`${point.date} ${point.timeLabel} | Body Battery ${point.value} | ${point.phase === "recovery" ? "恢复" : "消耗"} | ${point.delta == null ? "较上一点 --" : `较上一点 ${point.delta > 0 ? "+" : ""}${point.delta}`}`}</title>
-                        </circle>
-                      </g>
+                      <button
+                        aria-label={`${point.date} ${point.timeLabel} Body Battery ${point.value}`}
+                        className="absolute -translate-x-1/2 -translate-y-1/2 rounded-full border border-slate-950/35 shadow-[0_0_0_1px_rgba(15,23,42,0.25)] transition-transform focus:outline-none"
+                        key={point.id}
+                        onBlur={() => setHoveredPointId((current) => (current === point.id ? null : current))}
+                        onFocus={() => setHoveredPointId(point.id)}
+                        onMouseEnter={() => setHoveredPointId(point.id)}
+                        style={{
+                          left: `${x}%`,
+                          top: `${clamp(y, 0, 100)}%`,
+                          width: isHovered ? "0.9rem" : "0.58rem",
+                          height: isHovered ? "0.9rem" : "0.58rem",
+                          backgroundColor: point.phase === "recovery" ? "#67e8f9" : "#f59e0b",
+                          opacity: isHovered ? 1 : 0.92,
+                        }}
+                        type="button"
+                      >
+                        <span className="sr-only">
+                          {`${point.date} ${point.timeLabel} | Body Battery ${point.value} | ${point.phase === "recovery" ? "恢复" : "消耗"} | ${point.delta == null ? "较上一点 --" : `较上一点 ${point.delta > 0 ? "+" : ""}${point.delta}`}`}
+                        </span>
+                      </button>
                     )
                   })}
-                </svg>
+                </div>
               </div>
               <div className="relative mt-3 h-10">
                 {xTickLabels.map((tick, index) => {
