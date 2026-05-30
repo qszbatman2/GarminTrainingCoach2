@@ -1,4 +1,5 @@
 import { getActivityDisplayValues, getMetricDisplayValues } from "@/lib/garmin-data"
+import { formatShanghaiDateTime, parseGarminDateTime } from "@/lib/shanghai-time"
 
 export type FieldSourceKey = "all" | "raw" | "garmin" | "derived"
 export type FieldGroupKey = "recovery" | "energy" | "activity" | "load"
@@ -38,13 +39,19 @@ type DailyFieldContext = {
   activities: FieldActivityRecord[]
   metricDisplay: ReturnType<typeof getMetricDisplayValues> | null
   activityDisplays: Array<ReturnType<typeof getActivityDisplayValues>>
+  latestActivity: FieldActivityRecord | null
+  latestActivityDisplay: ReturnType<typeof getActivityDisplayValues> | null
   totalDistanceMeters: number | null
   totalDurationSeconds: number | null
   activityCount: number
   activityTypesLabel: string | null
   moderateIntensityMinutes: number | null
   vigorousIntensityMinutes: number | null
+  moderateVigorousMinutes: number | null
   intensityMinutes: number | null
+  totalTrainingLoad: number | null
+  averageAerobicTrainingEffect: number | null
+  averageAnaerobicTrainingEffect: number | null
   lightSleepHours: number | null
 }
 
@@ -138,6 +145,15 @@ function sumNullable(values: Array<number | null | undefined>) {
   return valid.reduce((total, value) => total + value, 0)
 }
 
+function averageNullable(values: Array<number | null | undefined>) {
+  const valid = values.filter((value): value is number => value != null && Number.isFinite(value))
+  if (valid.length === 0) {
+    return null
+  }
+
+  return valid.reduce((total, value) => total + value, 0) / valid.length
+}
+
 function formatActivityTypes(activities: FieldActivityRecord[]) {
   if (activities.length === 0) {
     return null
@@ -151,13 +167,21 @@ function formatActivityTypes(activities: FieldActivityRecord[]) {
   return uniqueTypes.join(" / ")
 }
 
+function formatActivityDateTime(gmtValue: string | null | undefined, localValue: string | null | undefined) {
+  const parsed = parseGarminDateTime(gmtValue, "utc") ?? parseGarminDateTime(localValue, "shanghai")
+  return parsed ? formatShanghaiDateTime(parsed, { includeYear: false }) : "--"
+}
+
 function buildDailyFieldContext(metric: FieldMetricRecord | null, activities: FieldActivityRecord[]): DailyFieldContext {
   const metricDisplay = metric ? getMetricDisplayValues(metric.raw) : null
   const activityDisplays = activities.map((activity) => getActivityDisplayValues(activity.raw))
+  const latestActivity = activities[0] ?? null
+  const latestActivityDisplay = latestActivity ? getActivityDisplayValues(latestActivity.raw) : null
   const moderateIntensityMinutes = sumNullable(activityDisplays.map((activity) => activity.moderateIntensityMinutes))
   const vigorousIntensityMinutes = sumNullable(activityDisplays.map((activity) => activity.vigorousIntensityMinutes))
   const totalDistanceMeters = sumNullable(activities.map((activity) => activity.distance))
   const totalDurationSeconds = sumNullable(activities.map((activity) => activity.duration))
+  const totalTrainingLoad = sumNullable(activityDisplays.map((activity) => activity.trainingLoad))
   const lightSleepHours =
     metricDisplay?.sleepDurationHours != null
       ? Math.max(
@@ -177,16 +201,23 @@ function buildDailyFieldContext(metric: FieldMetricRecord | null, activities: Fi
     activities,
     metricDisplay,
     activityDisplays,
+    latestActivity,
+    latestActivityDisplay,
     totalDistanceMeters,
     totalDurationSeconds,
     activityCount: activities.length,
     activityTypesLabel: formatActivityTypes(activities),
     moderateIntensityMinutes,
     vigorousIntensityMinutes,
+    moderateVigorousMinutes:
+      moderateIntensityMinutes != null || vigorousIntensityMinutes != null ? (moderateIntensityMinutes ?? 0) + (vigorousIntensityMinutes ?? 0) : null,
     intensityMinutes:
       moderateIntensityMinutes != null || vigorousIntensityMinutes != null
         ? (moderateIntensityMinutes ?? 0) + (vigorousIntensityMinutes ?? 0) * 2
         : null,
+    totalTrainingLoad,
+    averageAerobicTrainingEffect: averageNullable(activityDisplays.map((activity) => activity.aerobicTrainingEffect)),
+    averageAnaerobicTrainingEffect: averageNullable(activityDisplays.map((activity) => activity.anaerobicTrainingEffect)),
     lightSleepHours,
   }
 }
@@ -333,11 +364,60 @@ const DAILY_FIELD_DEFINITIONS: DailyFieldDefinition[] = [
     getValue: ({ totalDurationSeconds }) => formatDuration(totalDurationSeconds),
   },
   {
+    id: "latestActivityName",
+    label: "最近活动名称",
+    group: "activity",
+    source: "derived",
+    getValue: ({ latestActivity }) => latestActivity?.name ?? "--",
+  },
+  {
+    id: "latestActivityType",
+    label: "最近活动类型",
+    group: "activity",
+    source: "derived",
+    getValue: ({ latestActivity }) => latestActivity?.type.replaceAll("_", " ") ?? "--",
+  },
+  {
+    id: "latestActivityStartTime",
+    label: "最近活动开始",
+    group: "activity",
+    source: "garmin",
+    getValue: ({ latestActivityDisplay }) => formatActivityDateTime(latestActivityDisplay?.startedAtGmt, latestActivityDisplay?.startedAtLocal),
+  },
+  {
+    id: "latestActivityEndTime",
+    label: "最近活动结束",
+    group: "activity",
+    source: "garmin",
+    getValue: ({ latestActivityDisplay }) => formatActivityDateTime(latestActivityDisplay?.endedAtGmt, latestActivityDisplay?.endedAtLocal),
+  },
+  {
+    id: "latestActivityDistance",
+    label: "最近活动距离",
+    group: "activity",
+    source: "raw",
+    getValue: ({ latestActivity }) => formatDistance(latestActivity?.distance),
+  },
+  {
+    id: "latestActivityDuration",
+    label: "最近活动时长",
+    group: "activity",
+    source: "raw",
+    getValue: ({ latestActivity }) => formatDuration(latestActivity?.duration),
+  },
+  {
     id: "intensityMinutes",
     label: "加权强度分钟",
     group: "activity",
     source: "derived",
     getValue: ({ intensityMinutes }) => formatNumber(intensityMinutes, 0, " min"),
+  },
+  {
+    id: "moderateVigorousMinutes",
+    label: "中高强度分钟",
+    group: "activity",
+    source: "derived",
+    getValue: ({ moderateVigorousMinutes }) => formatNumber(moderateVigorousMinutes, 0, " min"),
   },
   {
     id: "moderateIntensityMinutes",
@@ -380,6 +460,97 @@ const DAILY_FIELD_DEFINITIONS: DailyFieldDefinition[] = [
     group: "activity",
     source: "raw",
     getValue: ({ metricDisplay }) => formatNumber(metricDisplay?.weight, 1, " kg"),
+  },
+  {
+    id: "sedentaryMinutes",
+    label: "久坐时长",
+    group: "activity",
+    source: "raw",
+    getValue: ({ metricDisplay }) => formatNumber(toMinutes(metricDisplay?.sedentaryMinutes), 0, " min"),
+  },
+  {
+    id: "latestActivityAverageHeartRate",
+    label: "最近活动平均心率",
+    group: "load",
+    source: "garmin",
+    getValue: ({ latestActivityDisplay }) => formatNumber(latestActivityDisplay?.averageHeartRate, 0, " bpm"),
+  },
+  {
+    id: "latestActivityMaxHeartRate",
+    label: "最近活动最大心率",
+    group: "load",
+    source: "garmin",
+    getValue: ({ latestActivityDisplay }) => formatNumber(latestActivityDisplay?.maxHeartRate, 0, " bpm"),
+  },
+  {
+    id: "latestActivityAveragePower",
+    label: "最近活动 AP",
+    group: "load",
+    source: "garmin",
+    getValue: ({ latestActivityDisplay }) => formatNumber(latestActivityDisplay?.averagePower, 0, " W"),
+  },
+  {
+    id: "latestActivityNormalizedPower",
+    label: "最近活动 NP",
+    group: "load",
+    source: "garmin",
+    getValue: ({ latestActivityDisplay }) => formatNumber(latestActivityDisplay?.normalizedPower, 0, " W"),
+  },
+  {
+    id: "latestActivityAverageCadence",
+    label: "最近活动平均踏频",
+    group: "load",
+    source: "garmin",
+    getValue: ({ latestActivityDisplay }) => formatNumber(latestActivityDisplay?.averageCadence, 0, " rpm"),
+  },
+  {
+    id: "latestActivityTrainingLoad",
+    label: "最近活动训练负荷",
+    group: "load",
+    source: "garmin",
+    getValue: ({ latestActivityDisplay }) => formatNumber(latestActivityDisplay?.trainingLoad),
+  },
+  {
+    id: "totalTrainingLoad",
+    label: "当日活动训练负荷",
+    group: "load",
+    source: "derived",
+    getValue: ({ totalTrainingLoad }) => formatNumber(totalTrainingLoad),
+  },
+  {
+    id: "latestActivityAerobicTrainingEffect",
+    label: "最近活动有氧效果",
+    group: "load",
+    source: "garmin",
+    getValue: ({ latestActivityDisplay }) => formatNumber(latestActivityDisplay?.aerobicTrainingEffect, 1),
+  },
+  {
+    id: "latestActivityAnaerobicTrainingEffect",
+    label: "最近活动无氧效果",
+    group: "load",
+    source: "garmin",
+    getValue: ({ latestActivityDisplay }) => formatNumber(latestActivityDisplay?.anaerobicTrainingEffect, 1),
+  },
+  {
+    id: "averageAerobicTrainingEffect",
+    label: "当日有氧效果均值",
+    group: "load",
+    source: "derived",
+    getValue: ({ averageAerobicTrainingEffect }) => formatNumber(averageAerobicTrainingEffect, 1),
+  },
+  {
+    id: "averageAnaerobicTrainingEffect",
+    label: "当日无氧效果均值",
+    group: "load",
+    source: "derived",
+    getValue: ({ averageAnaerobicTrainingEffect }) => formatNumber(averageAnaerobicTrainingEffect, 1),
+  },
+  {
+    id: "latestActivityRecoveryHours",
+    label: "最近活动恢复时间",
+    group: "load",
+    source: "garmin",
+    getValue: ({ latestActivityDisplay }) => formatNumber(toHours(latestActivityDisplay?.recoveryHours), 1, " h"),
   },
   {
     id: "acuteTrainingLoad",
