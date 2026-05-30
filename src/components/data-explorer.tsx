@@ -5,30 +5,18 @@ import { useEffect, useMemo, useRef, useState } from "react"
 
 import { AccentPill, MetricTile, SectionHeader, SubtleCard, SurfaceCard } from "@/components/design-system"
 import { RecoveryCountdownCard } from "@/components/recovery-countdown-card"
+import {
+  buildDailyFieldEntries,
+  FIELD_GROUP_META,
+  type FieldActivityRecord,
+  type FieldMetricRecord,
+} from "@/lib/data-field-catalog"
 import { getActivityDisplayValues, getBodyBatterySeries, getHeartRateSeries, getMetricDisplayValues, getStressSeries, type NumericPoint } from "@/lib/garmin-data"
 import { formatShanghaiDateTime, parseGarminDateTime } from "@/lib/shanghai-time"
 import type { TrainingAnalysisPayload } from "@/lib/training-analysis"
 
-type MetricItem = {
-  id: string
-  date: string
-  sleepScore: number | null
-  hrv: number | null
-  restingHr: number | null
-  stress: number | null
-  raw: unknown
-}
-
-type ActivityItem = {
-  id: string
-  garminId: string
-  name: string
-  type: string
-  distance: number | null
-  duration: number | null
-  date: string
-  raw: unknown
-}
+type MetricItem = FieldMetricRecord & { id: string }
+type ActivityItem = FieldActivityRecord & { garminId: string }
 
 type DataExplorerProps = {
   metricTotal: number
@@ -49,9 +37,6 @@ type DataResponse = {
 
 type MetricDisplayValues = ReturnType<typeof getMetricDisplayValues>
 type EnrichedMetric = MetricItem & MetricDisplayValues
-type ValidationTab = "fields" | "activities" | "raw"
-type DailyDetailChartKey = "heartRate" | "stress" | "bodyBattery"
-type FieldGroupKey = "all" | "recovery" | "energy" | "activity" | "load"
 
 type SleepCompositionDatum = {
   label: string
@@ -67,6 +52,7 @@ type BodyBatteryTimelinePoint = {
   date: string
   dateLabel: string
   timeLabel: string
+  hour: number
   value: number
   delta: number | null
   phase: "recovery" | "drain"
@@ -76,21 +62,6 @@ type StackDatum = {
   label: string
   segments: Array<{ key: string; value: number; color: string; tooltip?: string }>
 }
-
-type FieldEntry = {
-  key: string
-  label: string
-  group: Exclude<FieldGroupKey, "all">
-  value: string
-}
-
-const FIELD_GROUP_OPTIONS: Array<{ key: FieldGroupKey; label: string }> = [
-  { key: "all", label: "全部字段" },
-  { key: "recovery", label: "恢复睡眠" },
-  { key: "energy", label: "能量心率" },
-  { key: "activity", label: "活动代谢" },
-  { key: "load", label: "训练负荷" },
-]
 
 function mergeById<T extends { id: string }>(current: T[], incoming: T[]) {
   const existingIds = new Set(current.map((item) => item.id))
@@ -187,14 +158,6 @@ function getLatestMetricTileClass(value: string) {
     : "border-white/[0.04] bg-white/[0.018] text-slate-500"
 }
 
-function getTopLevelKeys(raw: unknown) {
-  if (!raw || typeof raw !== "object") {
-    return []
-  }
-
-  return Object.keys(raw as Record<string, unknown>).sort()
-}
-
 function toSleepHours(value: number | null | undefined) {
   if (value == null || !Number.isFinite(value)) {
     return null
@@ -278,6 +241,16 @@ function formatDelta(current: number | null | undefined, baseline: number | null
   }
 
   return `${delta > 0 ? "+" : "-"}${Math.abs(delta).toFixed(digits)}${suffix}`
+}
+
+function parseHourFromLabel(label: string) {
+  const matched = /^(\d{1,2}):(\d{2})$/.exec(label)
+  if (!matched) {
+    return 0
+  }
+
+  const hour = Number(matched[1])
+  return Number.isFinite(hour) ? clamp(hour, 0, 23) : 0
 }
 
 function getChartBounds(seriesList: NumericPoint[][], fixedMin?: number, fixedMax?: number) {
@@ -416,13 +389,17 @@ function BodyBatteryTrendChart({
   const [hoveredPointId, setHoveredPointId] = useState<string | null>(null)
   const bounds = getChartBounds([data.map((item) => ({ label: item.id, value: item.value }))], 0, 100)
   const yTicks = [100, 75, 50, 25, 0]
-  const xTickIndexes =
-    data.length <= 1
-      ? [0]
-      : Array.from(new Set([0, Math.floor((data.length - 1) * 0.25), Math.floor((data.length - 1) * 0.5), Math.floor((data.length - 1) * 0.75), data.length - 1]))
+  const dayLabels = Array.from(new Set(data.map((item) => item.dateLabel)))
+  const dayIndexMap = new Map(dayLabels.map((label, index) => [label, index]))
+  const totalHourSlots = Math.max(dayLabels.length * 24 - 1, 1)
+  const getPointX = (point: BodyBatteryTimelinePoint) => (((dayIndexMap.get(point.dateLabel) ?? 0) * 24 + point.hour) / totalHourSlots) * 100
+  const xTickLabels = dayLabels.map((label, index) => ({
+    label,
+    x: (((index * 24) + 12) / totalHourSlots) * 100,
+  }))
   const hoveredIndex = hoveredPointId ? data.findIndex((item) => item.id === hoveredPointId) : -1
   const hoveredPoint = hoveredIndex >= 0 ? data[hoveredIndex] : null
-  const hoveredX = hoveredIndex < 0 ? null : (hoveredIndex / Math.max(data.length - 1, 1)) * 100
+  const hoveredX = hoveredPoint == null ? null : getPointX(hoveredPoint)
   const hoveredY =
     hoveredPoint == null ? null : 100 - ((hoveredPoint.value - bounds.min) / Math.max(bounds.max - bounds.min, 1)) * 100
 
@@ -488,14 +465,14 @@ function BodyBatteryTrendChart({
                     const y = 100 - ((tick - bounds.min) / Math.max(bounds.max - bounds.min, 1)) * 100
                     return <path d={`M0,${clamp(y, 0, 100)} 100,${clamp(y, 0, 100)}`} fill="none" key={tick} stroke="rgba(148,163,184,0.14)" strokeDasharray="4 4" />
                   })}
-                  {xTickIndexes.map((tickIndex) => {
-                    const x = (tickIndex / Math.max(data.length - 1, 1)) * 100
-                    return <path d={`M${x},0 ${x},100`} fill="none" key={`x-${tickIndex}`} stroke="rgba(148,163,184,0.08)" strokeDasharray="3 5" />
+                  {xTickLabels.map((tick) => {
+                    const x = clamp(tick.x, 0, 100)
+                    return <path d={`M${x},0 ${x},100`} fill="none" key={`x-${tick.label}`} stroke="rgba(148,163,184,0.08)" strokeDasharray="3 5" />
                   })}
                   {data.slice(1).map((point, index) => {
                     const previous = data[index]
-                    const x1 = (index / Math.max(data.length - 1, 1)) * 100
-                    const x2 = ((index + 1) / Math.max(data.length - 1, 1)) * 100
+                    const x1 = getPointX(previous)
+                    const x2 = getPointX(point)
                     const y1 = 100 - ((previous.value - bounds.min) / Math.max(bounds.max - bounds.min, 1)) * 100
                     const y2 = 100 - ((point.value - bounds.min) / Math.max(bounds.max - bounds.min, 1)) * 100
                     return (
@@ -506,12 +483,12 @@ function BodyBatteryTrendChart({
                         stroke={point.phase === "recovery" ? "#67e8f9" : "#f59e0b"}
                         strokeLinecap="round"
                         strokeLinejoin="round"
-                        strokeWidth="2"
+                        strokeWidth="1.05"
                       />
                     )
                   })}
-                  {data.map((point, index) => {
-                    const x = (index / Math.max(data.length - 1, 1)) * 100
+                  {data.map((point) => {
+                    const x = getPointX(point)
                     const y = 100 - ((point.value - bounds.min) / Math.max(bounds.max - bounds.min, 1)) * 100
                     const isHovered = hoveredPointId === point.id
                     return (
@@ -521,7 +498,7 @@ function BodyBatteryTrendChart({
                           cy={clamp(y, 0, 100)}
                           fill={point.phase === "recovery" ? "#67e8f9" : "#f59e0b"}
                           opacity={isHovered ? 1 : 0.85}
-                          r={isHovered ? 1.9 : 1.2}
+                          r={isHovered ? 1.35 : 0.72}
                         />
                         <circle
                           className="cursor-crosshair"
@@ -529,7 +506,7 @@ function BodyBatteryTrendChart({
                           cy={clamp(y, 0, 100)}
                           fill="transparent"
                           onMouseEnter={() => setHoveredPointId(point.id)}
-                          r={2.8}
+                          r={1.8}
                         >
                           <title>{`${point.date} ${point.timeLabel} | Body Battery ${point.value} | ${point.phase === "recovery" ? "恢复" : "消耗"} | ${point.delta == null ? "较上一点 --" : `较上一点 ${point.delta > 0 ? "+" : ""}${point.delta}`}`}</title>
                         </circle>
@@ -539,14 +516,13 @@ function BodyBatteryTrendChart({
                 </svg>
               </div>
               <div className="relative mt-3 h-10">
-                {xTickIndexes.map((tickIndex) => {
-                  const point = data[tickIndex]
-                  const left = `${(tickIndex / Math.max(data.length - 1, 1)) * 100}%`
-                  const transform = tickIndex === 0 ? "translateX(0)" : tickIndex === data.length - 1 ? "translateX(-100%)" : "translateX(-50%)"
+                {xTickLabels.map((tick, index) => {
+                  const left = `${clamp(tick.x, 0, 100)}%`
+                  const transform = index === 0 ? "translateX(0)" : index === xTickLabels.length - 1 ? "translateX(-100%)" : "translateX(-50%)"
                   return (
-                    <div className="absolute top-0 text-center text-[11px] text-slate-500" key={`label-${point.id}`} style={{ left, transform }}>
-                      <div>{point.dateLabel}</div>
-                      <div className="mt-0.5">{point.timeLabel}</div>
+                    <div className="absolute top-0 text-center text-[11px] text-slate-500" key={`label-${tick.label}`} style={{ left, transform }}>
+                      <div>{tick.label}</div>
+                      <div className="mt-0.5">00-23h</div>
                     </div>
                   )
                 })}
@@ -678,51 +654,6 @@ function TimeSeriesChart({
       )}
     </SubtleCard>
   )
-}
-
-function buildFieldEntries(metric: EnrichedMetric | null): FieldEntry[] {
-  if (!metric) {
-    return []
-  }
-
-  return [
-    { key: "sleepScore", label: "睡眠评分", group: "recovery", value: formatNumber(metric.sleepScore) },
-    { key: "sleepDurationHours", label: "睡眠时长", group: "recovery", value: formatNumber(toSleepHours(metric.sleepDurationHours), 1, " h") },
-    { key: "deepSleepHours", label: "深睡", group: "recovery", value: formatNumber(toSleepHours(metric.deepSleepHours), 1, " h") },
-    { key: "remSleepHours", label: "REM", group: "recovery", value: formatNumber(toSleepHours(metric.remSleepHours), 1, " h") },
-    { key: "awakeDurationMinutes", label: "清醒时长", group: "recovery", value: formatNumber(toMinutes(metric.awakeDurationMinutes), 0, " min") },
-    { key: "sleepInterruptions", label: "睡眠中断", group: "recovery", value: formatNumber(metric.sleepInterruptions) },
-    { key: "hrv", label: "HRV", group: "recovery", value: formatNumber(metric.hrv, 0, " ms") },
-    { key: "trainingReadiness", label: "训练准备度", group: "recovery", value: formatNumber(metric.trainingReadiness) },
-    { key: "bodyBatteryHigh", label: "Body Battery 高点", group: "energy", value: formatNumber(metric.bodyBatteryHigh) },
-    { key: "bodyBatteryLow", label: "Body Battery 低点", group: "energy", value: formatNumber(metric.bodyBatteryLow) },
-    { key: "restingHr", label: "静息心率", group: "energy", value: formatNumber(metric.restingHr, 0, " bpm") },
-    { key: "stress", label: "压力", group: "energy", value: formatNumber(metric.stress) },
-    { key: "bloodOxygen", label: "血氧", group: "energy", value: formatNumber(metric.bloodOxygen, 0, " %") },
-    { key: "respiration", label: "呼吸频率", group: "energy", value: formatNumber(metric.respiration, 0, " brpm") },
-    { key: "steps", label: "步数", group: "activity", value: formatNumber(metric.steps) },
-    { key: "intensityMinutes", label: "加权强度分钟", group: "activity", value: formatNumber(metric.intensityMinutes, 0, " min") },
-    { key: "moderateIntensityMinutes", label: "中等强度", group: "activity", value: formatNumber(metric.moderateIntensityMinutes, 0, " min") },
-    { key: "vigorousIntensityMinutes", label: "高强度", group: "activity", value: formatNumber(metric.vigorousIntensityMinutes, 0, " min") },
-    { key: "activeCalories", label: "活动消耗", group: "activity", value: formatNumber(metric.activeCalories, 0, " kcal") },
-    { key: "restingCalories", label: "静息消耗", group: "activity", value: formatNumber(metric.restingCalories, 0, " kcal") },
-    { key: "floors", label: "爬楼层数", group: "activity", value: formatNumber(metric.floors) },
-    { key: "sedentaryMinutes", label: "久坐时长", group: "activity", value: formatNumber(toMinutes(metric.sedentaryMinutes), 0, " min") },
-    { key: "weight", label: "体重", group: "activity", value: formatNumber(metric.weight, 1, " kg") },
-    { key: "acuteTrainingLoad", label: "急性负荷", group: "load", value: formatNumber(metric.acuteTrainingLoad) },
-    { key: "chronicTrainingLoad", label: "慢性负荷", group: "load", value: formatNumber(metric.chronicTrainingLoad) },
-    { key: "acuteChronicLoadRatio", label: "急慢性负荷比", group: "load", value: formatNumber(metric.acuteChronicLoadRatio, 2) },
-    { key: "lowAerobicLoad", label: "低有氧负荷", group: "load", value: formatNumber(metric.lowAerobicLoad) },
-    { key: "highAerobicLoad", label: "高有氧负荷", group: "load", value: formatNumber(metric.highAerobicLoad) },
-    { key: "anaerobicLoad", label: "无氧负荷", group: "load", value: formatNumber(metric.anaerobicLoad) },
-    { key: "recoveryHours", label: "建议恢复时长", group: "load", value: formatNumber(toHours(metric.recoveryHours), 1, " h") },
-    { key: "vo2Max", label: "VO2 Max", group: "load", value: formatNumber(metric.vo2Max) },
-    { key: "enduranceScore", label: "耐力分数", group: "load", value: formatNumber(metric.enduranceScore) },
-    { key: "hillScore", label: "爬坡分数", group: "load", value: formatNumber(metric.hillScore) },
-    { key: "runningTolerance", label: "跑步耐受", group: "load", value: formatNumber(metric.runningTolerance) },
-    { key: "lactateThresholdHr", label: "乳酸阈值心率", group: "load", value: formatNumber(metric.lactateThresholdHr, 0, " bpm") },
-    { key: "trainingStatusScore", label: "训练状态分", group: "load", value: formatNumber(metric.trainingStatusScore) },
-  ]
 }
 
 export function DataExplorer({ metricTotal, metrics, activityTotal, activities, initialAnalysisReport }: DataExplorerProps) {
@@ -879,21 +810,32 @@ export function DataExplorer({ metricTotal, metrics, activityTotal, activities, 
       const recentMetricsWithSeries = metricsAsc
         .map((metric) => ({
           metric,
-          series: getBodyBatterySeries(metric.raw, 96),
+          series: getBodyBatterySeries(metric.raw, 0),
         }))
         .filter((item) => item.series.length > 1)
         .slice(-7)
 
       const detailedPoints =
         recentMetricsWithSeries.length > 0
-          ? recentMetricsWithSeries.flatMap(({ metric, series }) =>
-              series.map((point) => ({
-                date: metric.date,
-                dateLabel: metric.date.slice(5),
-                timeLabel: point.label,
-                value: point.value,
-              }))
-            )
+          ? recentMetricsWithSeries.flatMap(({ metric, series }) => {
+              const hourlyBuckets = new Map<number, { timeLabel: string; value: number }>()
+              for (const point of series) {
+                const hour = parseHourFromLabel(point.label)
+                hourlyBuckets.set(hour, {
+                  timeLabel: `${String(hour).padStart(2, "0")}:00`,
+                  value: point.value,
+                })
+              }
+
+              return [...hourlyBuckets.entries()]
+                .sort((left, right) => left[0] - right[0])
+                .map(([, point]) => ({
+                  date: metric.date,
+                  dateLabel: metric.date.slice(5),
+                  timeLabel: point.timeLabel,
+                  value: point.value,
+                }))
+            })
           : recentMetrics
               .filter((metric) => metric.bodyBatteryHigh != null || metric.bodyBatteryLow != null)
               .flatMap((metric) => {
@@ -927,6 +869,7 @@ export function DataExplorer({ metricTotal, metrics, activityTotal, activities, 
             date: point.date,
             dateLabel: point.dateLabel,
             timeLabel: point.timeLabel,
+            hour: parseHourFromLabel(point.timeLabel),
             value: point.value,
             delta,
             phase: delta == null || delta >= 0 ? "recovery" : "drain",
