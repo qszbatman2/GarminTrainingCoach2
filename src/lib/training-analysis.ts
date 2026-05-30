@@ -60,6 +60,12 @@ type EnrichedActivity = ActivityInput &
     recoveryHours: number | null
   }
 
+type DailyActivityIntensity = {
+  date: Date
+  intensityMinutes: number | null
+  vigorousIntensityMinutes: number | null
+}
+
 function asRecord(value: unknown): Record<string, unknown> | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return null
@@ -502,6 +508,39 @@ function enrichActivity(activity: ActivityInput): EnrichedActivity {
   }
 }
 
+function buildActivityIntensityDays(activities: EnrichedActivity[]): DailyActivityIntensity[] {
+  const byDay = new Map<string, { date: Date; moderate: number; vigorous: number; hasValue: boolean }>()
+
+  for (const activity of activities) {
+    const dayKey = toDateKey(activity.date)
+    const current = byDay.get(dayKey) ?? {
+      date: getShanghaiDayStart(activity.date),
+      moderate: 0,
+      vigorous: 0,
+      hasValue: false,
+    }
+
+    if (activity.moderateIntensityMinutes != null) {
+      current.moderate += activity.moderateIntensityMinutes
+      current.hasValue = true
+    }
+    if (activity.vigorousIntensityMinutes != null) {
+      current.vigorous += activity.vigorousIntensityMinutes
+      current.hasValue = true
+    }
+
+    byDay.set(dayKey, current)
+  }
+
+  return [...byDay.values()]
+    .map((entry) => ({
+      date: entry.date,
+      intensityMinutes: entry.hasValue ? round(entry.moderate + entry.vigorous * 2, 0) : null,
+      vigorousIntensityMinutes: entry.hasValue ? round(entry.vigorous, 0) : null,
+    }))
+    .sort((a, b) => a.date.getTime() - b.date.getTime())
+}
+
 function buildBaselineStats(metrics: EnrichedMetric[], key: BaselineMetricName): BaselineStats {
   const values = metrics.map((metric) => metric[key])
   const mean = average(values)
@@ -666,10 +705,13 @@ function getFatigueLevel(score: number | null): TrainingContext["fatigue"]["leve
 }
 
 function getMostRecentHighIntensityDate(metrics: EnrichedMetric[], activities: EnrichedActivity[]) {
+  const intensityByDay = new Map(buildActivityIntensityDays(activities).map((item) => [toDateKey(item.date), item]))
+
   for (let index = metrics.length - 1; index >= 0; index -= 1) {
     const metric = metrics[index]
     const dayKey = toDateKey(metric.date)
     const dayActivities = activities.filter((activity) => toDateKey(activity.date) === dayKey)
+    const activityIntensity = intensityByDay.get(dayKey) ?? null
     const highActivityLoad = dayActivities.some(
       (activity) =>
         (activity.trainingLoad != null && activity.trainingLoad >= 180) ||
@@ -678,6 +720,7 @@ function getMostRecentHighIntensityDate(metrics: EnrichedMetric[], activities: E
         (activity.recoveryHours != null && activity.recoveryHours >= 24)
     )
     const highIntensity =
+      (activityIntensity?.vigorousIntensityMinutes != null && activityIntensity.vigorousIntensityMinutes >= 30) ||
       (metric.vigorousIntensityMinutes != null && metric.vigorousIntensityMinutes >= 30) ||
       (metric.acuteChronicLoadRatio != null && metric.acuteChronicLoadRatio > 1.2) ||
       highActivityLoad
@@ -894,13 +937,12 @@ function getWeeklyLoadFocus(activities: EnrichedActivity[]): WeeklyLoadFocus {
 
 function buildWeeklyAssessment(options: {
   latestMetric: EnrichedMetric
-  metrics: EnrichedMetric[]
   activities: EnrichedActivity[]
   loadRatio: number | null
   latestRecoveryHours: number | null
   abnormalities: TrainingContext["abnormalities"]
 }) {
-  const { latestMetric, metrics, activities, loadRatio, latestRecoveryHours, abnormalities } = options
+  const { latestMetric, activities, loadRatio, latestRecoveryHours, abnormalities } = options
   const referenceDate = latestMetric.date
   const weekStart = startOfWeek(referenceDate)
   const monthStart = startOfMonth(referenceDate)
@@ -909,8 +951,9 @@ function buildWeeklyAssessment(options: {
 
   const weekActivities = getRangeItems(activities, weekStart, referenceDate)
   const monthActivities = getRangeItems(activities, monthStart, referenceDate)
-  const weekMetrics = getRangeItems(metrics, weekStart, referenceDate)
-  const monthMetrics = getRangeItems(metrics, monthStart, referenceDate)
+  const activityIntensityDays = buildActivityIntensityDays(activities)
+  const weekActivityIntensityDays = getRangeItems(activityIntensityDays, weekStart, referenceDate)
+  const monthActivityIntensityDays = getRangeItems(activityIntensityDays, monthStart, referenceDate)
 
   const weekDurationMin = sum(weekActivities.map((activity) => activity.durationMin))
   const monthDurationMin = sum(monthActivities.map((activity) => activity.durationMin))
@@ -920,10 +963,10 @@ function buildWeeklyAssessment(options: {
   const monthSessions = monthActivities.length
   const weekTrainingLoad = sum(weekActivities.map((activity) => activity.trainingLoad))
   const monthTrainingLoad = sum(monthActivities.map((activity) => activity.trainingLoad))
-  const weekIntensityMinutes = sum(weekMetrics.map((metric) => metric.intensityMinutes))
-  const monthIntensityMinutes = sum(monthMetrics.map((metric) => metric.intensityMinutes))
-  const weekVigorousMinutes = sum(weekMetrics.map((metric) => metric.vigorousIntensityMinutes))
-  const monthVigorousMinutes = sum(monthMetrics.map((metric) => metric.vigorousIntensityMinutes))
+  const weekIntensityMinutes = sum(weekActivityIntensityDays.map((day) => day.intensityMinutes))
+  const monthIntensityMinutes = sum(monthActivityIntensityDays.map((day) => day.intensityMinutes))
+  const weekVigorousMinutes = sum(weekActivityIntensityDays.map((day) => day.vigorousIntensityMinutes))
+  const monthVigorousMinutes = sum(monthActivityIntensityDays.map((day) => day.vigorousIntensityMinutes))
   const weekAvgAerobicEffect = average(weekActivities.map((activity) => activity.aerobicTrainingEffect))
   const monthAvgAerobicEffect = average(monthActivities.map((activity) => activity.aerobicTrainingEffect))
   const weekAvgAnaerobicEffect = average(weekActivities.map((activity) => activity.anaerobicTrainingEffect))
@@ -958,18 +1001,18 @@ function buildWeeklyAssessment(options: {
     getValue: (activity) => activity.trainingLoad,
   })
   const intensityMinutesProgress = buildSameProgressComparison({
-    currentItems: weekMetrics,
-    allItems: metrics,
+    currentItems: weekActivityIntensityDays,
+    allItems: activityIntensityDays,
     referenceDate,
     weekElapsedDays,
-    getValue: (metric) => metric.intensityMinutes,
+    getValue: (day) => day.intensityMinutes,
   })
   const vigorousMinutesProgress = buildSameProgressComparison({
-    currentItems: weekMetrics,
-    allItems: metrics,
+    currentItems: weekActivityIntensityDays,
+    allItems: activityIntensityDays,
     referenceDate,
     weekElapsedDays,
-    getValue: (metric) => metric.vigorousIntensityMinutes,
+    getValue: (day) => day.vigorousIntensityMinutes,
   })
 
   const loadFocus = getWeeklyLoadFocus(weekActivities.length > 0 ? weekActivities : monthActivities)
@@ -1508,7 +1551,6 @@ export function buildTrainingContext(metrics: DailyMetricInput[], activities: Ac
       : null
   const weeklyAssessment = buildWeeklyAssessment({
     latestMetric,
-    metrics: sortedMetrics,
     activities: sortedActivities,
     loadRatio,
     latestRecoveryHours,
