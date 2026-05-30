@@ -224,6 +224,37 @@ function average(values: Array<number | null | undefined>) {
   return valid.reduce((sum, value) => sum + value, 0) / valid.length
 }
 
+function buildActivityIntensityByDate(activities: ActivityItem[]) {
+  const byDate = new Map<string, { moderate: number; vigorous: number; hasValue: boolean }>()
+
+  for (const activity of activities) {
+    const values = getActivityDisplayValues(activity.raw)
+    const current = byDate.get(activity.date) ?? { moderate: 0, vigorous: 0, hasValue: false }
+
+    if (values.moderateIntensityMinutes != null) {
+      current.moderate += values.moderateIntensityMinutes
+      current.hasValue = true
+    }
+    if (values.vigorousIntensityMinutes != null) {
+      current.vigorous += values.vigorousIntensityMinutes
+      current.hasValue = true
+    }
+
+    byDate.set(activity.date, current)
+  }
+
+  return new Map(
+    [...byDate.entries()].map(([date, value]) => [
+      date,
+      {
+        moderateIntensityMinutes: value.hasValue ? value.moderate : null,
+        vigorousIntensityMinutes: value.hasValue ? value.vigorous : null,
+        intensityMinutes: value.hasValue ? value.moderate + value.vigorous * 2 : null,
+      },
+    ])
+  )
+}
+
 function formatNumber(value: number | null | undefined, digits = 0, suffix = "") {
   if (value == null || !Number.isFinite(value)) {
     return "--"
@@ -369,7 +400,7 @@ function StackedColumnChart({
   )
 }
 
-function RangeColumnChart({
+function BodyBatteryTrendChart({
   title,
   description,
   data,
@@ -378,6 +409,15 @@ function RangeColumnChart({
   description: string
   data: RangeDatum[]
 }) {
+  const bounds = getChartBounds(
+    [
+      data.map((item) => ({ label: `${item.label}-high`, value: item.high })),
+      data.map((item) => ({ label: `${item.label}-low`, value: item.low })),
+    ],
+    0,
+    100
+  )
+
   return (
     <SubtleCard className="p-4">
       <div>
@@ -385,38 +425,77 @@ function RangeColumnChart({
         <p className="mt-2 text-sm leading-6 text-slate-400">{description}</p>
       </div>
 
-      <div className="mt-5 grid grid-cols-5 gap-2 md:grid-cols-7 xl:grid-cols-10">
-        {data.map((item) => {
-          const low = clamp(item.low, 0, 100)
-          const high = clamp(item.high, 0, 100)
-          const bottom = 100 - high
-          const height = Math.max(high - low, 3)
-          return (
-            <div className="flex flex-col items-center gap-2" key={item.label}>
-              <div className="rounded-full border border-violet-300/18 bg-violet-300/10 px-2.5 py-0.5 text-xs font-medium text-violet-100">{item.high}</div>
-              <div className="relative flex h-44 w-full items-center justify-center">
-                <div className="relative h-full w-11 rounded-[1.1rem] border border-white/8 bg-[#081322] px-1.5 py-2">
-                  <div className="absolute inset-x-1/2 top-2 bottom-2 w-px -translate-x-1/2 bg-white/10" />
-                  <div
-                    className="absolute inset-x-1/2 w-3 -translate-x-1/2 rounded-full shadow-[0_0_18px_rgba(34,211,238,0.32)]"
-                    style={{
-                      top: `calc(${bottom}% + 0.5rem)`,
-                      height: `calc(${height}% - 0.1rem)`,
-                      backgroundImage: "linear-gradient(180deg, rgba(168,85,247,0.95), rgba(34,211,238,0.95))",
-                    }}
-                  />
-                  <div className="absolute inset-x-1/2 h-3.5 w-3.5 -translate-x-1/2 rounded-full border border-violet-300/60 bg-violet-300 shadow-[0_0_20px_rgba(196,181,253,0.38)]" style={{ top: `calc(${bottom}% + 0.15rem)` }} />
-                  <div className="absolute inset-x-1/2 h-3.5 w-3.5 -translate-x-1/2 rounded-full border border-cyan-300/60 bg-cyan-300 shadow-[0_0_18px_rgba(34,211,238,0.32)]" style={{ top: `calc(${100 - low}% - 0.5rem)` }} />
-                </div>
-              </div>
-              <div className="text-center">
-                <div className="rounded-full border border-cyan-300/18 bg-cyan-300/10 px-2.5 py-0.5 text-xs font-medium text-cyan-100">{item.low}</div>
-                <div className="mt-2 text-xs text-slate-500">{item.label}</div>
-              </div>
-            </div>
-          )
-        })}
+      <div className="mt-4 flex flex-wrap gap-2">
+        <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs text-slate-300">
+          <span className="h-2.5 w-2.5 rounded-full bg-cyan-300" />
+          恢复
+        </span>
+        <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs text-slate-300">
+          <span className="h-2.5 w-2.5 rounded-full bg-amber-400" />
+          消耗
+        </span>
       </div>
+
+      {data.length > 0 ? (
+        <>
+          <svg className="mt-5 block h-48 w-full" preserveAspectRatio="none" viewBox="0 0 100 100">
+            <path d="M0,76 100,76" fill="none" stroke="rgba(148,163,184,0.14)" strokeDasharray="4 4" />
+            <path d="M0,48 100,48" fill="none" stroke="rgba(148,163,184,0.1)" strokeDasharray="4 4" />
+            {data.map((item, index) => {
+              const xStart = data.length === 1 ? 50 : (index / (data.length - 1)) * 100
+              const xEnd = data.length === 1 ? 50 : Math.min(xStart + 100 / Math.max(data.length - 1, 1) / 2, 100)
+              const highY = 100 - ((clamp(item.high, bounds.min, bounds.max) - bounds.min) / Math.max(bounds.max - bounds.min, 1)) * 100
+              const lowY = 100 - ((clamp(item.low, bounds.min, bounds.max) - bounds.min) / Math.max(bounds.max - bounds.min, 1)) * 100
+              const prev = index > 0 ? data[index - 1] : null
+              const prevXEnd = prev ? ((index - 1) / Math.max(data.length - 1, 1)) * 100 + 100 / Math.max(data.length - 1, 1) / 2 : null
+              const prevLowY =
+                prev == null
+                  ? null
+                  : 100 - ((clamp(prev.low, bounds.min, bounds.max) - bounds.min) / Math.max(bounds.max - bounds.min, 1)) * 100
+
+              return (
+                <g key={item.label}>
+                  {prev != null && prevXEnd != null && prevLowY != null ? (
+                    <path
+                      d={`M ${prevXEnd} ${prevLowY} L ${xStart} ${highY}`}
+                      fill="none"
+                      stroke="#67e8f9"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth="2.2"
+                    >
+                      <title>{`${item.label}：恢复至 ${item.high}`}</title>
+                    </path>
+                  ) : null}
+                  <path
+                    d={`M ${xStart} ${highY} L ${xEnd} ${lowY}`}
+                    fill="none"
+                    stroke="#f59e0b"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2.2"
+                  >
+                    <title>{`${item.label}：消耗 ${item.high} → ${item.low}`}</title>
+                  </path>
+                  <circle cx={xStart} cy={highY} fill="#67e8f9" r="1.9">
+                    <title>{`${item.label}：高点 ${item.high}`}</title>
+                  </circle>
+                  <circle cx={xEnd} cy={lowY} fill="#f59e0b" r="1.9">
+                    <title>{`${item.label}：低点 ${item.low}`}</title>
+                  </circle>
+                </g>
+              )
+            })}
+          </svg>
+          <div className="mt-2 flex items-center justify-between text-xs text-slate-500">
+            <span>{data[0]?.label}</span>
+            <span>{data[Math.floor(data.length / 2)]?.label}</span>
+            <span>{data[data.length - 1]?.label}</span>
+          </div>
+        </>
+      ) : (
+        <div className="mt-6 rounded-3xl bg-white/[0.05] px-4 py-8 text-center text-sm text-slate-400">当前 Body Battery 数据不足，暂时无法绘制连续趋势。</div>
+      )}
     </SubtleCard>
   )
 }
@@ -652,13 +731,23 @@ export function DataExplorer({ metricTotal, metrics, activityTotal, activities, 
       })
   }, [activitiesLoading, activitiesState.length, hasMoreActivities])
 
+  const activityIntensityByDate = useMemo(() => buildActivityIntensityByDate(activitiesState), [activitiesState])
+
   const enrichedMetrics = useMemo<EnrichedMetric[]>(
     () =>
-      metricsState.map((metric) => ({
-        ...metric,
-        ...getMetricDisplayValues(metric.raw),
-      })),
-    [metricsState]
+      metricsState.map((metric) => {
+        const displayValues = getMetricDisplayValues(metric.raw)
+        const activityIntensity = activityIntensityByDate.get(metric.date)
+
+        return {
+          ...metric,
+          ...displayValues,
+          intensityMinutes: activityIntensity?.intensityMinutes ?? displayValues.intensityMinutes,
+          moderateIntensityMinutes: activityIntensity?.moderateIntensityMinutes ?? displayValues.moderateIntensityMinutes,
+          vigorousIntensityMinutes: activityIntensity?.vigorousIntensityMinutes ?? displayValues.vigorousIntensityMinutes,
+        }
+      }),
+    [activityIntensityByDate, metricsState]
   )
 
   const metricsAsc = useMemo(() => [...enrichedMetrics].sort((a, b) => a.date.localeCompare(b.date)), [enrichedMetrics])
@@ -1000,7 +1089,7 @@ export function DataExplorer({ metricTotal, metrics, activityTotal, activities, 
           </SubtleCard>
 
           <div className="xl:col-span-2">
-            <RangeColumnChart data={bodyBatteryRangeData} description="每天一根区间柱，顶部是高点，底部是低点，中间的振幅代表白天消耗与夜间回充。" title="Body Battery 高低点" />
+            <BodyBatteryTrendChart data={bodyBatteryRangeData} description="跨天连续连接 Body Battery 的回充与消耗阶段，冷色表示恢复，暖色表示白天消耗。" title="Body Battery 趋势" />
           </div>
         </div>
       </SurfaceCard>
