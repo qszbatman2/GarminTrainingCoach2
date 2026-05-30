@@ -394,18 +394,20 @@ function RangeColumnChart({
           return (
             <div className="flex flex-col items-center gap-2" key={item.label}>
               <div className="rounded-full border border-violet-300/18 bg-violet-300/10 px-2.5 py-0.5 text-xs font-medium text-violet-100">{item.high}</div>
-              <div className="relative h-44 w-full rounded-[1.1rem] border border-white/8 bg-[#081322] px-1.5 py-2">
-                <div className="absolute inset-x-1/2 top-2 bottom-2 w-px -translate-x-1/2 bg-white/10" />
-                <div
-                  className="absolute inset-x-1/2 w-3 -translate-x-1/2 rounded-full shadow-[0_0_18px_rgba(34,211,238,0.32)]"
-                  style={{
-                    top: `calc(${bottom}% + 0.5rem)`,
-                    height: `calc(${height}% - 0.1rem)`,
-                    backgroundImage: "linear-gradient(180deg, rgba(168,85,247,0.95), rgba(34,211,238,0.95))",
-                  }}
-                />
-                <div className="absolute inset-x-1/2 h-3.5 w-3.5 -translate-x-1/2 rounded-full border border-violet-300/60 bg-violet-300 shadow-[0_0_20px_rgba(196,181,253,0.38)]" style={{ top: `calc(${bottom}% + 0.15rem)` }} />
-                <div className="absolute inset-x-1/2 h-3.5 w-3.5 -translate-x-1/2 rounded-full border border-cyan-300/60 bg-cyan-300 shadow-[0_0_18px_rgba(34,211,238,0.32)]" style={{ top: `calc(${100 - low}% - 0.5rem)` }} />
+              <div className="relative flex h-44 w-full items-center justify-center">
+                <div className="relative h-full w-11 rounded-[1.1rem] border border-white/8 bg-[#081322] px-1.5 py-2">
+                  <div className="absolute inset-x-1/2 top-2 bottom-2 w-px -translate-x-1/2 bg-white/10" />
+                  <div
+                    className="absolute inset-x-1/2 w-3 -translate-x-1/2 rounded-full shadow-[0_0_18px_rgba(34,211,238,0.32)]"
+                    style={{
+                      top: `calc(${bottom}% + 0.5rem)`,
+                      height: `calc(${height}% - 0.1rem)`,
+                      backgroundImage: "linear-gradient(180deg, rgba(168,85,247,0.95), rgba(34,211,238,0.95))",
+                    }}
+                  />
+                  <div className="absolute inset-x-1/2 h-3.5 w-3.5 -translate-x-1/2 rounded-full border border-violet-300/60 bg-violet-300 shadow-[0_0_20px_rgba(196,181,253,0.38)]" style={{ top: `calc(${bottom}% + 0.15rem)` }} />
+                  <div className="absolute inset-x-1/2 h-3.5 w-3.5 -translate-x-1/2 rounded-full border border-cyan-300/60 bg-cyan-300 shadow-[0_0_18px_rgba(34,211,238,0.32)]" style={{ top: `calc(${100 - low}% - 0.5rem)` }} />
+                </div>
               </div>
               <div className="text-center">
                 <div className="rounded-full border border-cyan-300/18 bg-cyan-300/10 px-2.5 py-0.5 text-xs font-medium text-cyan-100">{item.low}</div>
@@ -746,10 +748,6 @@ export function DataExplorer({ metricTotal, metrics, activityTotal, activities, 
         .map((metric) => {
           const moderate = metric.moderateIntensityMinutes ?? 0
           const vigorous = metric.vigorousIntensityMinutes ?? 0
-          if (moderate === 0 && vigorous === 0) {
-            return null
-          }
-
           return {
             label: metric.date.slice(5),
             segments: [
@@ -757,8 +755,7 @@ export function DataExplorer({ metricTotal, metrics, activityTotal, activities, 
               { key: "vigorous", value: vigorous, color: "#f97316" },
             ],
           }
-        })
-        .filter((item): item is StackDatum => item !== null),
+        }),
     [recentMetrics]
   )
 
@@ -766,12 +763,10 @@ export function DataExplorer({ metricTotal, metrics, activityTotal, activities, 
     () =>
       recentMetrics
         .map((metric) => {
-          const low = metric.lowAerobicLoad ?? 0
-          const high = metric.highAerobicLoad ?? 0
-          const anaerobic = metric.anaerobicLoad ?? 0
-          if (low === 0 && high === 0 && anaerobic === 0) {
-            return null
-          }
+          const hasTrainingToday = (metric.intensityMinutes ?? 0) > 0 || (metric.moderateIntensityMinutes ?? 0) > 0 || (metric.vigorousIntensityMinutes ?? 0) > 0
+          const low = hasTrainingToday ? (metric.lowAerobicLoad ?? 0) : 0
+          const high = hasTrainingToday ? (metric.highAerobicLoad ?? 0) : 0
+          const anaerobic = hasTrainingToday ? (metric.anaerobicLoad ?? 0) : 0
 
           return {
             label: metric.date.slice(5),
@@ -781,8 +776,7 @@ export function DataExplorer({ metricTotal, metrics, activityTotal, activities, 
               { key: "anaerobic", value: anaerobic, color: "#f97316" },
             ],
           }
-        })
-        .filter((item): item is StackDatum => item !== null),
+        }),
     [recentMetrics]
   )
 
@@ -906,14 +900,21 @@ export function DataExplorer({ metricTotal, metrics, activityTotal, activities, 
 
           <SurfaceCard className="p-5">
             <SectionHeader description="以下三项统一取自最近一日 Daily 数据，用来表示当前恢复状态。" eyebrow="Current Status" title="生命体征速览" />
-            <div className="mt-4 flex items-center justify-between rounded-[1.2rem] border border-white/8 bg-white/[0.03] px-4 py-3">
-              <div className="text-sm text-slate-400">数据日期</div>
+            <div className="mt-4 flex items-center justify-between gap-3 rounded-[1.2rem] border border-white/8 bg-white/[0.03] px-4 py-3">
+              <div className="text-sm text-slate-400">最近一日状态</div>
               <AccentPill tone="neutral">{latestMetric?.date ?? "--"}</AccentPill>
             </div>
-            <div className="mt-4 grid gap-3">
-              <MetricTile detail={`数据日期 ${latestMetric?.date ?? "--"}`} label="静息心率" value={formatNumber(latestMetric?.restingHr, 0, " bpm")} />
-              <MetricTile detail={`数据日期 ${latestMetric?.date ?? "--"}`} label="压力" value={formatNumber(latestMetric?.stress)} />
-              <MetricTile detail={`数据日期 ${latestMetric?.date ?? "--"}`} label="呼吸频率" value={formatNumber(latestMetric?.respiration, 0, " brpm")} />
+            <div className="mt-4 grid gap-2 rounded-[1.2rem] border border-white/8 bg-white/[0.03] p-3">
+              {[
+                { label: "静息心率", value: formatNumber(latestMetric?.restingHr, 0, " bpm") },
+                { label: "压力", value: formatNumber(latestMetric?.stress) },
+                { label: "呼吸频率", value: formatNumber(latestMetric?.respiration, 0, " brpm") },
+              ].map((item) => (
+                <div className="grid grid-cols-[5.5rem_1fr] items-baseline gap-3 rounded-xl px-2 py-1.5" key={item.label}>
+                  <div className="text-sm text-slate-400">{item.label}</div>
+                  <div className="text-right text-xl font-semibold text-white">{item.value}</div>
+                </div>
+              ))}
             </div>
           </SurfaceCard>
         </div>
