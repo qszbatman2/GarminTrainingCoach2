@@ -875,16 +875,49 @@ export function DataExplorer({ metricTotal, metrics, activityTotal, activities, 
   )
 
   const bodyBatteryTimelineData = useMemo<BodyBatteryTimelinePoint[]>(
-    () =>
-      recentMetrics
-        .flatMap((metric) =>
-          getBodyBatterySeries(metric.raw, 96).map((point) => ({
-            date: metric.date,
-            dateLabel: metric.date.slice(5),
-            timeLabel: point.label,
-            value: point.value,
-          }))
-        )
+    () => {
+      const recentMetricsWithSeries = metricsAsc
+        .map((metric) => ({
+          metric,
+          series: getBodyBatterySeries(metric.raw, 96),
+        }))
+        .filter((item) => item.series.length > 1)
+        .slice(-7)
+
+      const detailedPoints =
+        recentMetricsWithSeries.length > 0
+          ? recentMetricsWithSeries.flatMap(({ metric, series }) =>
+              series.map((point) => ({
+                date: metric.date,
+                dateLabel: metric.date.slice(5),
+                timeLabel: point.label,
+                value: point.value,
+              }))
+            )
+          : recentMetrics
+              .filter((metric) => metric.bodyBatteryHigh != null || metric.bodyBatteryLow != null)
+              .flatMap((metric) => {
+                const points: Array<{ date: string; dateLabel: string; timeLabel: string; value: number }> = []
+                if (metric.bodyBatteryHigh != null) {
+                  points.push({
+                    date: metric.date,
+                    dateLabel: metric.date.slice(5),
+                    timeLabel: "06:00",
+                    value: metric.bodyBatteryHigh,
+                  })
+                }
+                if (metric.bodyBatteryLow != null) {
+                  points.push({
+                    date: metric.date,
+                    dateLabel: metric.date.slice(5),
+                    timeLabel: "21:00",
+                    value: metric.bodyBatteryLow,
+                  })
+                }
+                return points
+              })
+
+      return detailedPoints
         .sort((left, right) => `${left.date} ${left.timeLabel}`.localeCompare(`${right.date} ${right.timeLabel}`))
         .map((point, index, all) => {
           const previous = index > 0 ? all[index - 1] : null
@@ -898,8 +931,9 @@ export function DataExplorer({ metricTotal, metrics, activityTotal, activities, 
             delta,
             phase: delta == null || delta >= 0 ? "recovery" : "drain",
           }
-        }),
-    [recentMetrics]
+        })
+    },
+    [metricsAsc, recentMetrics]
   )
 
   const intensityData = useMemo<StackDatum[]>(
