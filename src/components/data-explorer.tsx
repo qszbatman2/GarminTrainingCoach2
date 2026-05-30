@@ -62,10 +62,14 @@ type SleepCompositionDatum = {
   awake: number
 }
 
-type RangeDatum = {
-  label: string
-  low: number
-  high: number
+type BodyBatteryTimelinePoint = {
+  id: string
+  date: string
+  dateLabel: string
+  timeLabel: string
+  value: number
+  delta: number | null
+  phase: "recovery" | "drain"
 }
 
 type StackDatum = {
@@ -407,16 +411,20 @@ function BodyBatteryTrendChart({
 }: {
   title: string
   description: string
-  data: RangeDatum[]
+  data: BodyBatteryTimelinePoint[]
 }) {
-  const bounds = getChartBounds(
-    [
-      data.map((item) => ({ label: `${item.label}-high`, value: item.high })),
-      data.map((item) => ({ label: `${item.label}-low`, value: item.low })),
-    ],
-    0,
-    100
-  )
+  const [hoveredPointId, setHoveredPointId] = useState<string | null>(null)
+  const bounds = getChartBounds([data.map((item) => ({ label: item.id, value: item.value }))], 0, 100)
+  const yTicks = [100, 75, 50, 25, 0]
+  const xTickIndexes =
+    data.length <= 1
+      ? [0]
+      : Array.from(new Set([0, Math.floor((data.length - 1) * 0.25), Math.floor((data.length - 1) * 0.5), Math.floor((data.length - 1) * 0.75), data.length - 1]))
+  const hoveredIndex = hoveredPointId ? data.findIndex((item) => item.id === hoveredPointId) : -1
+  const hoveredPoint = hoveredIndex >= 0 ? data[hoveredIndex] : null
+  const hoveredX = hoveredIndex < 0 ? null : (hoveredIndex / Math.max(data.length - 1, 1)) * 100
+  const hoveredY =
+    hoveredPoint == null ? null : 100 - ((hoveredPoint.value - bounds.min) / Math.max(bounds.max - bounds.min, 1)) * 100
 
   return (
     <SubtleCard className="p-4">
@@ -438,59 +446,112 @@ function BodyBatteryTrendChart({
 
       {data.length > 0 ? (
         <>
-          <svg className="mt-5 block h-48 w-full" preserveAspectRatio="none" viewBox="0 0 100 100">
-            <path d="M0,76 100,76" fill="none" stroke="rgba(148,163,184,0.14)" strokeDasharray="4 4" />
-            <path d="M0,48 100,48" fill="none" stroke="rgba(148,163,184,0.1)" strokeDasharray="4 4" />
-            {data.map((item, index) => {
-              const xStart = data.length === 1 ? 50 : (index / (data.length - 1)) * 100
-              const xEnd = data.length === 1 ? 50 : Math.min(xStart + 100 / Math.max(data.length - 1, 1) / 2, 100)
-              const highY = 100 - ((clamp(item.high, bounds.min, bounds.max) - bounds.min) / Math.max(bounds.max - bounds.min, 1)) * 100
-              const lowY = 100 - ((clamp(item.low, bounds.min, bounds.max) - bounds.min) / Math.max(bounds.max - bounds.min, 1)) * 100
-              const prev = index > 0 ? data[index - 1] : null
-              const prevXEnd = prev ? ((index - 1) / Math.max(data.length - 1, 1)) * 100 + 100 / Math.max(data.length - 1, 1) / 2 : null
-              const prevLowY =
-                prev == null
-                  ? null
-                  : 100 - ((clamp(prev.low, bounds.min, bounds.max) - bounds.min) / Math.max(bounds.max - bounds.min, 1)) * 100
-
-              return (
-                <g key={item.label}>
-                  {prev != null && prevXEnd != null && prevLowY != null ? (
-                    <path
-                      d={`M ${prevXEnd} ${prevLowY} L ${xStart} ${highY}`}
-                      fill="none"
-                      stroke="#67e8f9"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth="2.2"
-                    >
-                      <title>{`${item.label}：恢复至 ${item.high}`}</title>
-                    </path>
-                  ) : null}
-                  <path
-                    d={`M ${xStart} ${highY} L ${xEnd} ${lowY}`}
-                    fill="none"
-                    stroke="#f59e0b"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth="2.2"
+          <div className="mt-5 grid grid-cols-[2.5rem_1fr] gap-3">
+            <div className="relative h-56">
+              {yTicks.map((tick) => {
+                const top = `${100 - ((tick - bounds.min) / Math.max(bounds.max - bounds.min, 1)) * 100}%`
+                return (
+                  <div className="absolute right-0 -translate-y-1/2 text-[11px] text-slate-500" key={tick} style={{ top }}>
+                    {tick}
+                  </div>
+                )
+              })}
+            </div>
+            <div>
+              <div className="relative h-56" onMouseLeave={() => setHoveredPointId(null)}>
+                {hoveredPoint && hoveredX != null && hoveredY != null ? (
+                  <div
+                    className="pointer-events-none absolute z-10 w-44 rounded-2xl border border-white/10 bg-slate-950/95 px-3 py-2 text-xs text-slate-200 shadow-[0_14px_40px_rgba(2,6,23,0.5)]"
+                    style={{ left: `${Math.min(Math.max(hoveredX, 12), 88)}%`, top: `${Math.max(hoveredY - 6, 4)}%`, transform: "translate(-50%, -100%)" }}
                   >
-                    <title>{`${item.label}：消耗 ${item.high} → ${item.low}`}</title>
-                  </path>
-                  <circle cx={xStart} cy={highY} fill="#67e8f9" r="1.9">
-                    <title>{`${item.label}：高点 ${item.high}`}</title>
-                  </circle>
-                  <circle cx={xEnd} cy={lowY} fill="#f59e0b" r="1.9">
-                    <title>{`${item.label}：低点 ${item.low}`}</title>
-                  </circle>
-                </g>
-              )
-            })}
-          </svg>
-          <div className="mt-2 flex items-center justify-between text-xs text-slate-500">
-            <span>{data[0]?.label}</span>
-            <span>{data[Math.floor(data.length / 2)]?.label}</span>
-            <span>{data[data.length - 1]?.label}</span>
+                    <div className="font-medium text-white">{hoveredPoint.date}</div>
+                    <div className="mt-1 text-slate-300">{hoveredPoint.timeLabel}</div>
+                    <div className="mt-2 flex items-center justify-between">
+                      <span>Body Battery</span>
+                      <span className="font-semibold text-white">{hoveredPoint.value}</span>
+                    </div>
+                    <div className="mt-1 flex items-center justify-between">
+                      <span>状态</span>
+                      <span className={hoveredPoint.phase === "recovery" ? "text-cyan-300" : "text-amber-300"}>{hoveredPoint.phase === "recovery" ? "恢复" : "消耗"}</span>
+                    </div>
+                    <div className="mt-1 flex items-center justify-between">
+                      <span>较上一点</span>
+                      <span className={hoveredPoint.delta != null && hoveredPoint.delta >= 0 ? "text-cyan-300" : "text-amber-300"}>
+                        {hoveredPoint.delta == null ? "--" : `${hoveredPoint.delta > 0 ? "+" : ""}${hoveredPoint.delta}`}
+                      </span>
+                    </div>
+                  </div>
+                ) : null}
+
+                <svg className="block h-56 w-full" preserveAspectRatio="none" viewBox="0 0 100 100">
+                  {yTicks.map((tick) => {
+                    const y = 100 - ((tick - bounds.min) / Math.max(bounds.max - bounds.min, 1)) * 100
+                    return <path d={`M0,${clamp(y, 0, 100)} 100,${clamp(y, 0, 100)}`} fill="none" key={tick} stroke="rgba(148,163,184,0.14)" strokeDasharray="4 4" />
+                  })}
+                  {xTickIndexes.map((tickIndex) => {
+                    const x = (tickIndex / Math.max(data.length - 1, 1)) * 100
+                    return <path d={`M${x},0 ${x},100`} fill="none" key={`x-${tickIndex}`} stroke="rgba(148,163,184,0.08)" strokeDasharray="3 5" />
+                  })}
+                  {data.slice(1).map((point, index) => {
+                    const previous = data[index]
+                    const x1 = (index / Math.max(data.length - 1, 1)) * 100
+                    const x2 = ((index + 1) / Math.max(data.length - 1, 1)) * 100
+                    const y1 = 100 - ((previous.value - bounds.min) / Math.max(bounds.max - bounds.min, 1)) * 100
+                    const y2 = 100 - ((point.value - bounds.min) / Math.max(bounds.max - bounds.min, 1)) * 100
+                    return (
+                      <path
+                        d={`M ${x1} ${clamp(y1, 0, 100)} L ${x2} ${clamp(y2, 0, 100)}`}
+                        fill="none"
+                        key={`${previous.id}-${point.id}`}
+                        stroke={point.phase === "recovery" ? "#67e8f9" : "#f59e0b"}
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth="2"
+                      />
+                    )
+                  })}
+                  {data.map((point, index) => {
+                    const x = (index / Math.max(data.length - 1, 1)) * 100
+                    const y = 100 - ((point.value - bounds.min) / Math.max(bounds.max - bounds.min, 1)) * 100
+                    const isHovered = hoveredPointId === point.id
+                    return (
+                      <g key={point.id}>
+                        <circle
+                          cx={x}
+                          cy={clamp(y, 0, 100)}
+                          fill={point.phase === "recovery" ? "#67e8f9" : "#f59e0b"}
+                          opacity={isHovered ? 1 : 0.85}
+                          r={isHovered ? 1.9 : 1.2}
+                        />
+                        <circle
+                          className="cursor-crosshair"
+                          cx={x}
+                          cy={clamp(y, 0, 100)}
+                          fill="transparent"
+                          onMouseEnter={() => setHoveredPointId(point.id)}
+                          r={2.8}
+                        >
+                          <title>{`${point.date} ${point.timeLabel} | Body Battery ${point.value} | ${point.phase === "recovery" ? "恢复" : "消耗"} | ${point.delta == null ? "较上一点 --" : `较上一点 ${point.delta > 0 ? "+" : ""}${point.delta}`}`}</title>
+                        </circle>
+                      </g>
+                    )
+                  })}
+                </svg>
+              </div>
+              <div className="relative mt-3 h-10">
+                {xTickIndexes.map((tickIndex) => {
+                  const point = data[tickIndex]
+                  const left = `${(tickIndex / Math.max(data.length - 1, 1)) * 100}%`
+                  const transform = tickIndex === 0 ? "translateX(0)" : tickIndex === data.length - 1 ? "translateX(-100%)" : "translateX(-50%)"
+                  return (
+                    <div className="absolute top-0 text-center text-[11px] text-slate-500" key={`label-${point.id}`} style={{ left, transform }}>
+                      <div>{point.dateLabel}</div>
+                      <div className="mt-0.5">{point.timeLabel}</div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
           </div>
         </>
       ) : (
@@ -813,21 +874,31 @@ export function DataExplorer({ metricTotal, metrics, activityTotal, activities, 
     [recentMetrics]
   )
 
-  const bodyBatteryRangeData = useMemo<RangeDatum[]>(
+  const bodyBatteryTimelineData = useMemo<BodyBatteryTimelinePoint[]>(
     () =>
       recentMetrics
-        .map((metric) => {
-          if (metric.bodyBatteryHigh == null || metric.bodyBatteryLow == null) {
-            return null
-          }
-
+        .flatMap((metric) =>
+          getBodyBatterySeries(metric.raw, 96).map((point) => ({
+            date: metric.date,
+            dateLabel: metric.date.slice(5),
+            timeLabel: point.label,
+            value: point.value,
+          }))
+        )
+        .sort((left, right) => `${left.date} ${left.timeLabel}`.localeCompare(`${right.date} ${right.timeLabel}`))
+        .map((point, index, all) => {
+          const previous = index > 0 ? all[index - 1] : null
+          const delta = previous == null ? null : point.value - previous.value
           return {
-            label: metric.date.slice(5),
-            low: metric.bodyBatteryLow,
-            high: metric.bodyBatteryHigh,
+            id: `${point.date}-${point.timeLabel}-${index}`,
+            date: point.date,
+            dateLabel: point.dateLabel,
+            timeLabel: point.timeLabel,
+            value: point.value,
+            delta,
+            phase: delta == null || delta >= 0 ? "recovery" : "drain",
           }
-        })
-        .filter((item): item is RangeDatum => item !== null),
+        }),
     [recentMetrics]
   )
 
@@ -1089,7 +1160,7 @@ export function DataExplorer({ metricTotal, metrics, activityTotal, activities, 
           </SubtleCard>
 
           <div className="xl:col-span-2">
-            <BodyBatteryTrendChart data={bodyBatteryRangeData} description="跨天连续连接 Body Battery 的回充与消耗阶段，冷色表示恢复，暖色表示白天消耗。" title="Body Battery 趋势" />
+            <BodyBatteryTrendChart data={bodyBatteryTimelineData} description="用多日分时点位串起 Body Battery 变化，冷色代表恢复抬升，暖色代表消耗下滑。" title="Body Battery 趋势" />
           </div>
         </div>
       </SurfaceCard>

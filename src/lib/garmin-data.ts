@@ -119,6 +119,202 @@ function firstValue<T>(paths: string[], source: unknown): T | null {
   return null
 }
 
+type ActivityDetailDescriptor = {
+  key?: string
+  metricsIndex?: number
+  unit?: {
+    factor?: number
+  }
+}
+
+type ActivityDetailPoint = {
+  timestampMs: number | null
+  movingDurationSec: number | null
+  heartRate: number | null
+  power: number | null
+}
+
+export type ActivityIntensityResult = {
+  moderateIntensityMinutes: number | null
+  vigorousIntensityMinutes: number | null
+  source: "detail_power" | "detail_heart_rate" | "summary_fallback" | "missing"
+}
+
+function normalizeDescriptorMetricValue(rawValue: unknown, factor: number | undefined) {
+  if (typeof rawValue !== "number" || !Number.isFinite(rawValue)) {
+    return null
+  }
+
+  void factor
+  return rawValue
+}
+
+function getActivityDetailSeries(raw: unknown): ActivityDetailPoint[] {
+  const details = asRecord(asRecord(raw)?.details)
+  const descriptors = Array.isArray(details?.metricDescriptors) ? (details.metricDescriptors as ActivityDetailDescriptor[]) : []
+  const metrics = Array.isArray(details?.activityDetailMetrics) ? (details.activityDetailMetrics as Array<{ metrics?: unknown[] }>) : []
+
+  if (descriptors.length === 0 || metrics.length === 0) {
+    return []
+  }
+
+  const descriptorMap = new Map<string, ActivityDetailDescriptor>()
+  for (const descriptor of descriptors) {
+    if (descriptor?.key) {
+      descriptorMap.set(descriptor.key, descriptor)
+    }
+  }
+
+  function getPointValue(metricValues: unknown[] | undefined, key: string) {
+    const descriptor = descriptorMap.get(key)
+    const index = descriptor?.metricsIndex
+    if (!metricValues || index == null || index < 0 || index >= metricValues.length) {
+      return null
+    }
+
+    return normalizeDescriptorMetricValue(metricValues[index], descriptor?.unit?.factor)
+  }
+
+  return metrics
+    .map((entry) => {
+      const values = Array.isArray(entry?.metrics) ? entry.metrics : undefined
+      return {
+        timestampMs: getPointValue(values, "directTimestamp"),
+        movingDurationSec: getPointValue(values, "sumMovingDuration"),
+        heartRate: getPointValue(values, "directHeartRate"),
+        power: getPointValue(values, "directPower"),
+      }
+    })
+    .filter((point) => point.timestampMs != null || point.movingDurationSec != null)
+}
+
+export function computeActivityIntensityFromDetails(
+  raw: unknown,
+  options?: {
+    averageHeartRate?: number | null
+    maxHeartRate?: number | null
+    averagePower?: number | null
+    normalizedPower?: number | null
+    lactateThresholdHr?: number | null
+  }
+): ActivityIntensityResult {
+  const series = getActivityDetailSeries(raw)
+  if (series.length < 2) {
+    return {
+      moderateIntensityMinutes: null,
+      vigorousIntensityMinutes: null,
+      source: "missing",
+    }
+  }
+
+  const averageHeartRate = options?.averageHeartRate ?? null
+  const maxHeartRate = options?.maxHeartRate ?? null
+  const averagePower = options?.averagePower ?? null
+  const normalizedPower = options?.normalizedPower ?? null
+  const lactateThresholdHr = options?.lactateThresholdHr ?? null
+
+  const moderateHeartRateThreshold =
+    lactateThresholdHr != null
+      ? lactateThresholdHr * 0.84
+      : averageHeartRate != null && maxHeartRate != null
+        ? Math.max(averageHeartRate, maxHeartRate * 0.78)
+        : averageHeartRate != null
+          ? averageHeartRate
+          : maxHeartRate != null
+            ? maxHeartRate * 0.78
+            : null
+  const vigorousHeartRateThreshold =
+    lactateThresholdHr != null
+      ? lactateThresholdHr * 0.95
+      : averageHeartRate != null && maxHeartRate != null
+        ? Math.max(averageHeartRate * 1.08, maxHeartRate * 0.88)
+        : averageHeartRate != null
+          ? averageHeartRate * 1.1
+          : maxHeartRate != null
+            ? maxHeartRate * 0.88
+            : null
+
+  const moderatePowerThreshold =
+    normalizedPower != null ? normalizedPower * 0.78 : averagePower != null ? averagePower * 1.1 : null
+  const vigorousPowerThreshold =
+    normalizedPower != null ? normalizedPower * 0.92 : averagePower != null ? averagePower * 1.28 : null
+
+  let moderateSeconds = 0
+  let vigorousSeconds = 0
+  let usedPower = false
+  let usedHeartRate = false
+
+  for (let index = 0; index < series.length - 1; index += 1) {
+    const current = series[index]
+    const next = series[index + 1]
+    if (!current || !next) {
+      continue
+    }
+
+    const movingDelta =
+      current.movingDurationSec != null && next.movingDurationSec != null
+        ? next.movingDurationSec - current.movingDurationSec
+        : null
+    const timestampDelta =
+      current.timestampMs != null && next.timestampMs != null
+        ? (next.timestampMs - current.timestampMs) / 1000
+        : null
+    const rawStepSeconds = movingDelta != null && movingDelta > 0 ? movingDelta : timestampDelta != null && timestampDelta > 0 ? timestampDelta : null
+    if (rawStepSeconds == null) {
+      continue
+    }
+
+    const stepSeconds = Math.min(rawStepSeconds, 60)
+    if (stepSeconds <= 0) {
+      continue
+    }
+
+    const heartRateQualified =
+      current.heartRate != null &&
+      ((vigorousHeartRateThreshold != null && current.heartRate >= vigorousHeartRateThreshold) ||
+        (moderateHeartRateThreshold != null && current.heartRate >= moderateHeartRateThreshold))
+    const powerQualified =
+      current.power != null &&
+      ((vigorousPowerThreshold != null && current.power >= vigorousPowerThreshold) ||
+        (moderatePowerThreshold != null && current.power >= moderatePowerThreshold))
+
+    if (!heartRateQualified && !powerQualified) {
+      continue
+    }
+
+    if (powerQualified) {
+      usedPower = true
+    }
+    if (heartRateQualified) {
+      usedHeartRate = true
+    }
+
+    const isVigorous =
+      (current.heartRate != null && vigorousHeartRateThreshold != null && current.heartRate >= vigorousHeartRateThreshold) ||
+      (current.power != null && vigorousPowerThreshold != null && current.power >= vigorousPowerThreshold)
+
+    if (isVigorous) {
+      vigorousSeconds += stepSeconds
+    } else {
+      moderateSeconds += stepSeconds
+    }
+  }
+
+  if (moderateSeconds === 0 && vigorousSeconds === 0) {
+    return {
+      moderateIntensityMinutes: null,
+      vigorousIntensityMinutes: null,
+      source: "missing",
+    }
+  }
+
+  return {
+    moderateIntensityMinutes: Math.round(moderateSeconds / 60),
+    vigorousIntensityMinutes: Math.round(vigorousSeconds / 60),
+    source: usedPower ? "detail_power" : usedHeartRate ? "detail_heart_rate" : "missing",
+  }
+}
+
 function deriveIntensityMinutes(moderateMinutes: number | null, vigorousMinutes: number | null) {
   if (moderateMinutes == null && vigorousMinutes == null) {
     return null
@@ -153,6 +349,10 @@ function parseTimestamp(rawValue: unknown): Date | null {
 }
 
 function compressPoints(points: NumericPoint[], maxPoints = 48) {
+  if (maxPoints <= 0) {
+    return points
+  }
+
   if (points.length <= maxPoints) {
     return points
   }
@@ -229,13 +429,14 @@ function normalizePoint(item: unknown, index: number, valueKeys: string[]): Nume
   }
 }
 
-function normalizeSeries(source: unknown, valueKeys: string[]): NumericPoint[] {
+function normalizeSeries(source: unknown, valueKeys: string[], maxPoints = 48): NumericPoint[] {
   if (Array.isArray(source)) {
     return compressPoints(
       source
         .map((item, index) => normalizePoint(item, index, valueKeys))
         .filter((item): item is NumericPoint => item !== null)
-        .sort((a, b) => a.label.localeCompare(b.label))
+        .sort((a, b) => a.label.localeCompare(b.label)),
+      maxPoints
     )
   }
 
@@ -245,7 +446,7 @@ function normalizeSeries(source: unknown, valueKeys: string[]): NumericPoint[] {
   }
 
   for (const value of Object.values(record)) {
-    const nested = normalizeSeries(value, valueKeys)
+    const nested = normalizeSeries(value, valueKeys, maxPoints)
     if (nested.length >= 2) {
       return nested
     }
@@ -255,7 +456,8 @@ function normalizeSeries(source: unknown, valueKeys: string[]): NumericPoint[] {
     return compressPoints(
       Object.entries(record)
         .map(([label, value]) => ({ label, value: Number(value) }))
-        .filter((point) => Number.isFinite(point.value) && point.value >= 0)
+        .filter((point) => Number.isFinite(point.value) && point.value >= 0),
+      maxPoints
     )
   }
 
@@ -511,6 +713,85 @@ export function getMetricDisplayValues(raw: unknown) {
 }
 
 export function getActivityDisplayValues(raw: unknown) {
+  const averageHeartRate = firstNumber(
+    [
+      "summaryDTO.averageHR",
+      "details.averageHR",
+      "details.avgHr",
+      "averageHR",
+      "averageHeartRate",
+      "summary.averageHeartRate",
+    ],
+    raw
+  )
+  const maxHeartRate = firstNumber(
+    [
+      "summaryDTO.maxHR",
+      "details.maxHR",
+      "details.maxHr",
+      "maxHR",
+      "maxHeartRate",
+      "summary.maxHeartRate",
+    ],
+    raw
+  )
+  const averagePower = firstNumber(
+    [
+      "summaryDTO.averagePower",
+      "details.averagePower",
+      "details.avgPower",
+      "averagePower",
+    ],
+    raw
+  )
+  const normalizedPower = firstNumber(
+    [
+      "summaryDTO.normalizedPower",
+      "summaryDTO.normPower",
+      "details.normalizedPower",
+      "details.normPower",
+      "normalizedPower",
+      "normPower",
+    ],
+    raw
+  )
+  const lactateThresholdHr = firstNumber(
+    [
+      "user_profile.userData.lactateThresholdHeartRate",
+      "user_profile.userData.runningLactateThresholdHeartRate",
+      "lactate_threshold.speed_and_heart_rate.heartRate",
+      "lactate_threshold.speed_and_heart_rate.hearRate",
+      "lactate_threshold.speed_and_heart_rate.heartRateCycling",
+      "lactate_threshold.heartRate",
+      "lactate_threshold.hearRate",
+      "lactate_threshold.heartRateCycling",
+    ],
+    raw
+  )
+  const summaryModerateIntensityMinutes = firstNumber(
+    [
+      "summaryDTO.moderateIntensityMinutes",
+      "details.moderateIntensityMinutes",
+      "moderateIntensityMinutes",
+    ],
+    raw
+  )
+  const summaryVigorousIntensityMinutes = firstNumber(
+    [
+      "summaryDTO.vigorousIntensityMinutes",
+      "details.vigorousIntensityMinutes",
+      "vigorousIntensityMinutes",
+    ],
+    raw
+  )
+  const detailIntensity = computeActivityIntensityFromDetails(raw, {
+    averageHeartRate,
+    maxHeartRate,
+    averagePower,
+    normalizedPower,
+    lactateThresholdHr,
+  })
+
   return {
     startedAtGmt: firstValue<string>(
       [
@@ -544,28 +825,8 @@ export function getActivityDisplayValues(raw: unknown) {
       ],
       raw
     ),
-    averageHeartRate: firstNumber(
-      [
-        "summaryDTO.averageHR",
-        "details.averageHR",
-        "details.avgHr",
-        "averageHR",
-        "averageHeartRate",
-        "summary.averageHeartRate",
-      ],
-      raw
-    ),
-    maxHeartRate: firstNumber(
-      [
-        "summaryDTO.maxHR",
-        "details.maxHR",
-        "details.maxHr",
-        "maxHR",
-        "maxHeartRate",
-        "summary.maxHeartRate",
-      ],
-      raw
-    ),
+    averageHeartRate,
+    maxHeartRate,
     averageCadence: firstNumber(
       [
         "summaryDTO.averageBikeCadence",
@@ -595,26 +856,8 @@ export function getActivityDisplayValues(raw: unknown) {
       ],
       raw
     ),
-    averagePower: firstNumber(
-      [
-        "summaryDTO.averagePower",
-        "details.averagePower",
-        "details.avgPower",
-        "averagePower",
-      ],
-      raw
-    ),
-    normalizedPower: firstNumber(
-      [
-        "summaryDTO.normalizedPower",
-        "summaryDTO.normPower",
-        "details.normalizedPower",
-        "details.normPower",
-        "normalizedPower",
-        "normPower",
-      ],
-      raw
-    ),
+    averagePower,
+    normalizedPower,
     aerobicTrainingEffect: firstNumber(
       [
         "summaryDTO.aerobicTrainingEffect",
@@ -644,22 +887,14 @@ export function getActivityDisplayValues(raw: unknown) {
       ],
       raw
     ),
-    moderateIntensityMinutes: firstNumber(
-      [
-        "summaryDTO.moderateIntensityMinutes",
-        "details.moderateIntensityMinutes",
-        "moderateIntensityMinutes",
-      ],
-      raw
-    ),
-    vigorousIntensityMinutes: firstNumber(
-      [
-        "summaryDTO.vigorousIntensityMinutes",
-        "details.vigorousIntensityMinutes",
-        "vigorousIntensityMinutes",
-      ],
-      raw
-    ),
+    moderateIntensityMinutes: detailIntensity.moderateIntensityMinutes ?? summaryModerateIntensityMinutes,
+    vigorousIntensityMinutes: detailIntensity.vigorousIntensityMinutes ?? summaryVigorousIntensityMinutes,
+    intensitySource:
+      detailIntensity.source !== "missing"
+        ? detailIntensity.source
+        : summaryModerateIntensityMinutes != null || summaryVigorousIntensityMinutes != null
+          ? "summary_fallback"
+          : "missing",
     recoveryHours: firstNumber(
       [
         "summaryDTO.recoveryTime",
@@ -1063,7 +1298,7 @@ export function buildDailyTrendGroups(metrics: DailyTrendSource[]) {
   })).filter((group) => group.metrics.length > 0)
 }
 
-export function getHeartRateSeries(raw: unknown) {
+export function getHeartRateSeries(raw: unknown, maxPoints = 48) {
   const source =
     firstValue(
       [
@@ -1075,20 +1310,20 @@ export function getHeartRateSeries(raw: unknown) {
       raw
     ) ?? raw
 
-  return normalizeSeries(source, ["heartRate", "value"])
+  return normalizeSeries(source, ["heartRate", "value"], maxPoints)
 }
 
-export function getStressSeries(raw: unknown) {
+export function getStressSeries(raw: unknown, maxPoints = 48) {
   const source =
     firstValue(
       ["stress.stressValuesArray", "stress.stressValues", "stress", "body_battery.stressValuesArray", "body_battery"],
       raw
     ) ?? raw
 
-  return normalizeSeries(source, ["stressLevel", "value"])
+  return normalizeSeries(source, ["stressLevel", "value"], maxPoints)
 }
 
-export function getBodyBatterySeries(raw: unknown) {
+export function getBodyBatterySeries(raw: unknown, maxPoints = 48) {
   const source =
     firstValue(
       [
@@ -1099,5 +1334,5 @@ export function getBodyBatterySeries(raw: unknown) {
       ],
       raw
     ) ?? raw
-  return normalizeSeries(source, ["bodyBattery", "value"])
+  return normalizeSeries(source, ["bodyBattery", "value"], maxPoints)
 }
