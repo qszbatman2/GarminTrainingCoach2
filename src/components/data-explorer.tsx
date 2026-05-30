@@ -72,30 +72,6 @@ function mergeById<T extends { id: string }>(current: T[], incoming: T[]) {
   return [...current, ...incoming.filter((item) => !existingIds.has(item.id))]
 }
 
-function LoadingTile({ label = "加载中" }: { label?: string }) {
-  return (
-    <SubtleCard className="animate-pulse p-4">
-      <div className="h-4 w-20 rounded-full bg-white/10" />
-      <div className="mt-4 h-8 w-28 rounded-full bg-white/10" />
-      <div className="mt-3 h-3 w-24 rounded-full bg-white/10" />
-      <div className="mt-3 text-xs text-slate-500">{label}</div>
-    </SubtleCard>
-  )
-}
-
-function LoadingRows({ count = 4 }: { count?: number }) {
-  return (
-    <div className="space-y-3 px-5 py-5">
-      {Array.from({ length: count }).map((_, index) => (
-        <div className="animate-pulse rounded-2xl border border-white/8 bg-white/[0.03] px-4 py-4" key={index}>
-          <div className="h-4 w-32 rounded-full bg-white/10" />
-          <div className="mt-3 h-3 w-48 rounded-full bg-white/10" />
-        </div>
-      ))}
-    </div>
-  )
-}
-
 function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max)
 }
@@ -663,10 +639,7 @@ export function DataExplorer({ metricTotal, metrics, activityTotal, activities, 
   const [metricsLoading, setMetricsLoading] = useState(false)
   const [activitiesLoading, setActivitiesLoading] = useState(false)
   const [selectedDate, setSelectedDate] = useState(metrics[0]?.date ?? "")
-  const [selectedDetailChart, setSelectedDetailChart] = useState<DailyDetailChartKey>("heartRate")
-  const [validationTab, setValidationTab] = useState<ValidationTab>("fields")
-  const [fieldGroup, setFieldGroup] = useState<FieldGroupKey>("all")
-  const [fieldSearch, setFieldSearch] = useState("")
+  const datePickerRef = useRef<HTMLInputElement>(null)
   const metricsRequestStarted = useRef(false)
   const activitiesRequestStarted = useRef(false)
 
@@ -776,9 +749,9 @@ export function DataExplorer({ metricTotal, metrics, activityTotal, activities, 
     }
   }, [latestActivities])
 
-  const heartRateSeries = selectedMetric ? getHeartRateSeries(selectedMetric.raw) : []
-  const stressSeries = selectedMetric ? getStressSeries(selectedMetric.raw) : []
-  const bodyBatterySeries = selectedMetric ? getBodyBatterySeries(selectedMetric.raw) : []
+  const heartRateSeries = useMemo(() => (selectedMetric ? getHeartRateSeries(selectedMetric.raw) : []), [selectedMetric])
+  const stressSeries = useMemo(() => (selectedMetric ? getStressSeries(selectedMetric.raw) : []), [selectedMetric])
+  const bodyBatterySeries = useMemo(() => (selectedMetric ? getBodyBatterySeries(selectedMetric.raw) : []), [selectedMetric])
 
   const sleepCompositionData = useMemo<SleepCompositionDatum[]>(
     () =>
@@ -945,44 +918,63 @@ export function DataExplorer({ metricTotal, metrics, activityTotal, activities, 
   const hrvAverage = average(last7Metrics.map((metric) => metric.hrv))
   const hrv30Average = average(hrv30Metrics.map((metric) => metric.hrv))
   const previous30HrvAverage = average(previous30Metrics.map((metric) => metric.hrv))
-  const fields = useMemo(() => buildFieldEntries(selectedMetric), [selectedMetric])
-  const topLevelKeys = useMemo(() => getTopLevelKeys(selectedMetric?.raw), [selectedMetric?.raw])
-  const filteredFields = useMemo(
-    () =>
-      fields.filter((field) => {
-        const matchesGroup = fieldGroup === "all" || field.group === fieldGroup
-        const matchesSearch = fieldSearch.trim().length === 0 || field.label.toLowerCase().includes(fieldSearch.trim().toLowerCase())
-        return matchesGroup && matchesSearch
-      }),
-    [fieldGroup, fieldSearch, fields]
+  const selectedDayActivities = useMemo(
+    () => activitiesState.filter((activity) => activity.date === selectedMetric?.date),
+    [activitiesState, selectedMetric?.date]
   )
-
-  const selectedSeriesConfig = {
-    heartRate: {
-      title: `${selectedMetric?.date ?? "--"} 心率节律`,
-      description: "保留折线，适合连续心率波动。",
-      unit: "bpm",
-      data: heartRateSeries,
-      variant: "line" as const,
-      color: "#22d3ee",
-    },
-    stress: {
-      title: `${selectedMetric?.date ?? "--"} 压力分布`,
-      description: "改为时间柱，强调压力峰值出现在哪些时段。",
-      unit: "stress",
-      data: stressSeries,
-      variant: "bars" as const,
-      color: "#f97316",
-    },
-    bodyBattery: {
-      title: `${selectedMetric?.date ?? "--"} Body Battery 走向`,
-      description: "改为面积图，更容易看出白天消耗和夜间回充。",
-      unit: "battery",
-      data: bodyBatterySeries,
-      variant: "area" as const,
-      color: "#8b5cf6",
-    },
-  }[selectedDetailChart]
+  const dailyFieldEntries = useMemo(
+    () => buildDailyFieldEntries({ metric: selectedMetric, activities: selectedDayActivities }),
+    [selectedDayActivities, selectedMetric]
+  )
+  const groupedDailyFields = useMemo(
+    () =>
+      FIELD_GROUP_META.map((group) => ({
+        ...group,
+        entries: dailyFieldEntries.filter((entry) => entry.group === group.key),
+      })).filter((group) => group.entries.length > 0),
+    [dailyFieldEntries]
+  )
+  const selectedMetricIndex = useMemo(
+    () => (selectedMetric ? metricsAsc.findIndex((metric) => metric.date === selectedMetric.date) : -1),
+    [metricsAsc, selectedMetric]
+  )
+  const previousMetric = selectedMetricIndex > 0 ? metricsAsc[selectedMetricIndex - 1] ?? null : null
+  const nextMetric = selectedMetricIndex >= 0 && selectedMetricIndex < metricsAsc.length - 1 ? metricsAsc[selectedMetricIndex + 1] ?? null : null
+  const earliestLoadedDate = metricsAsc[0]?.date ?? ""
+  const latestLoadedDate = metricsAsc[metricsAsc.length - 1]?.date ?? ""
+  const dailyTrendCards = useMemo(
+    () =>
+      [
+        {
+          key: "heartRate",
+          title: `${selectedMetric?.date ?? "--"} 心率节律`,
+          description: "连续心率波动",
+          unit: "bpm",
+          data: heartRateSeries,
+          variant: "line" as const,
+          color: "#22d3ee",
+        },
+        {
+          key: "stress",
+          title: `${selectedMetric?.date ?? "--"} 压力分布`,
+          description: "时段压力峰值",
+          unit: "stress",
+          data: stressSeries,
+          variant: "bars" as const,
+          color: "#f97316",
+        },
+        {
+          key: "bodyBattery",
+          title: `${selectedMetric?.date ?? "--"} Body Battery 走向`,
+          description: "白天消耗与夜间回充",
+          unit: "battery",
+          data: bodyBatterySeries,
+          variant: "area" as const,
+          color: "#8b5cf6",
+        },
+      ].filter((chart) => chart.data.length >= 2),
+    [bodyBatterySeries, heartRateSeries, selectedMetric?.date, stressSeries]
+  )
 
   return (
     <>
@@ -1186,203 +1178,106 @@ export function DataExplorer({ metricTotal, metrics, activityTotal, activities, 
       </SurfaceCard>
       </section>
 
-      <section className="grid gap-4 xl:grid-cols-[1.12fr_0.88fr]">
-      <SurfaceCard className="p-5">
-        <SectionHeader description="选中某一天后，把当日指标和分时曲线收进一个工作台。只有这里保留分时序列。 " eyebrow="Daily Workbench" title="单日深潜" />
+      <section>
+        <SurfaceCard className="p-5">
+          <SectionHeader
+            description="用弹出日历切换日期，当天所有可用字段都压缩进同一屏；有时间序列的数据直接画图，不再重复堆摘要卡片。"
+            eyebrow="Daily Workbench"
+            title="单日深潜"
+          />
 
-        <div className="mt-4 flex flex-wrap gap-2">
-          {enrichedMetrics.slice(0, 14).map((metric) => (
+          <div className="mt-4 flex flex-wrap items-center gap-2">
             <button
-              className={`rounded-full px-4 py-2 text-sm transition ${
-                metric.date === selectedMetric?.date ? "bg-cyan-300 text-slate-950" : "border border-white/10 bg-white/[0.04] text-slate-200 hover:bg-white/[0.08]"
-              }`}
-              key={metric.id}
-              onClick={() => setSelectedDate(metric.date)}
+              className="rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-sm text-slate-200 transition hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-40"
+              disabled={!previousMetric}
+              onClick={() => previousMetric && setSelectedDate(previousMetric.date)}
               type="button"
             >
-              {metric.date}
+              更早一天
             </button>
-          ))}
-          {metricsLoading ? <span className="rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-sm text-slate-300">历史日期加载中...</span> : null}
-        </div>
-
-        {selectedMetric ? (
-          <>
-            <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-              <MetricTile detail="恢复质量" label="睡眠评分" value={formatNumber(selectedMetric.sleepScore)} />
-              <MetricTile detail="自主神经恢复" label="HRV" value={formatNumber(selectedMetric.hrv, 0, " ms")} />
-              <MetricTile detail="训练 readiness 信号" label="训练准备度" value={formatNumber(selectedMetric.trainingReadiness)} />
-              <MetricTile detail="Garmin 总分口径" label="加权强度分钟" value={formatNumber(selectedMetric.intensityMinutes, 0, " min")} />
-              <MetricTile detail="当天高点" label="Body Battery 高点" value={formatNumber(selectedMetric.bodyBatteryHigh)} />
-              <MetricTile detail="当天低点" label="Body Battery 低点" value={formatNumber(selectedMetric.bodyBatteryLow)} />
-            </div>
-
-            <div className="mt-4 flex flex-wrap gap-2">
-              {[
-                { key: "heartRate", label: "心率折线" },
-                { key: "stress", label: "压力时间柱" },
-                { key: "bodyBattery", label: "Body Battery 面积图" },
-              ].map((item) => (
-                <button
-                  className={`rounded-full px-4 py-2 text-sm transition ${
-                    item.key === selectedDetailChart ? "bg-white text-slate-950" : "border border-white/10 bg-white/[0.04] text-slate-200 hover:bg-white/[0.08]"
-                  }`}
-                  key={item.key}
-                  onClick={() => setSelectedDetailChart(item.key as DailyDetailChartKey)}
-                  type="button"
-                >
-                  {item.label}
-                </button>
-              ))}
-            </div>
-
-            <div className="mt-3">
-              <TimeSeriesChart
-                color={selectedSeriesConfig.color}
-                data={selectedSeriesConfig.data}
-                description={selectedSeriesConfig.description}
-                title={selectedSeriesConfig.title}
-                unit={selectedSeriesConfig.unit}
-                variant={selectedSeriesConfig.variant}
-              />
-            </div>
-          </>
-        ) : (
-          <div className="mt-6 rounded-[1.75rem] border border-dashed border-white/12 bg-white/[0.04] px-6 py-12 text-center text-sm text-slate-400">
-            还没有可分析的每日数据。
+            <button
+              className="rounded-full bg-cyan-300 px-4 py-2 text-sm font-medium text-slate-950 transition hover:bg-cyan-200"
+              onClick={() => {
+                const picker = datePickerRef.current as (HTMLInputElement & { showPicker?: () => void }) | null
+                if (!picker) {
+                  return
+                }
+                picker.showPicker?.()
+                picker.focus()
+              }}
+              type="button"
+            >
+              {selectedMetric?.date ?? "选择日期"}
+            </button>
+            <button
+              className="rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-sm text-slate-200 transition hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-40"
+              disabled={!nextMetric}
+              onClick={() => nextMetric && setSelectedDate(nextMetric.date)}
+              type="button"
+            >
+              更近一天
+            </button>
+            <AccentPill tone="neutral">已载入 {metricsState.length} 天</AccentPill>
+            <AccentPill tone="neutral">
+              范围 {earliestLoadedDate || "--"} ~ {latestLoadedDate || "--"}
+            </AccentPill>
+            {metricsLoading ? <AccentPill tone="violet">历史日期加载中</AccentPill> : null}
+            <input
+              className="sr-only"
+              max={latestLoadedDate || undefined}
+              min={earliestLoadedDate || undefined}
+              onChange={(event) => setSelectedDate(event.target.value)}
+              ref={datePickerRef}
+              type="date"
+              value={selectedMetric?.date ?? ""}
+            />
           </div>
-        )}
-      </SurfaceCard>
 
-      <SurfaceCard className="p-5">
-        <SectionHeader description="这里是快速排查区。字段总览优先展示解析后的所有已知指标，底部保留原始 JSON 兜底。 " eyebrow="Field Center" title="字段与验证中心" />
-        <div className="mt-4 flex flex-wrap gap-2">
-          {[
-            { key: "fields", label: "字段总览" },
-            { key: "activities", label: "活动记录" },
-            { key: "raw", label: "Raw JSON" },
-          ].map((item) => (
-            <button
-              className={`rounded-full px-4 py-2 text-sm transition ${
-                item.key === validationTab ? "bg-white text-slate-950" : "border border-white/10 bg-white/[0.04] text-slate-200 hover:bg-white/[0.08]"
-              }`}
-              key={item.key}
-              onClick={() => setValidationTab(item.key as ValidationTab)}
-              type="button"
-            >
-              {item.label}
-            </button>
-          ))}
-        </div>
-
-        {validationTab === "fields" ? (
-          <>
-            <div className="mt-4 grid gap-3 lg:grid-cols-[0.7fr_0.3fr]">
-              <input
-                className="w-full rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-white outline-none placeholder:text-slate-500 focus:border-cyan-400/60"
-                onChange={(event) => setFieldSearch(event.target.value)}
-                placeholder="搜索字段，如 睡眠 / body / 负荷 / 血氧"
-                type="text"
-                value={fieldSearch}
-              />
-              <div className="rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-slate-300">当前日期 {selectedMetric?.date ?? "--"}</div>
-            </div>
-
-            <div className="mt-3 flex flex-wrap gap-2">
-              {FIELD_GROUP_OPTIONS.map((option) => (
-                <button
-                  className={`rounded-full px-4 py-2 text-sm transition ${
-                    option.key === fieldGroup ? "bg-cyan-300 text-slate-950" : "border border-white/10 bg-white/[0.04] text-slate-200 hover:bg-white/[0.08]"
-                  }`}
-                  key={option.key}
-                  onClick={() => setFieldGroup(option.key)}
-                  type="button"
-                >
-                  {option.label}
-                </button>
-              ))}
-            </div>
-
-            <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-              {filteredFields.map((field) => (
-                <SubtleCard className="p-4" key={field.key}>
-                  <div className="text-sm text-slate-400">{field.label}</div>
-                  <div className="mt-3 text-2xl font-semibold tracking-tight text-white">{field.value}</div>
-                  <div className="mt-2 text-xs uppercase tracking-[0.18em] text-slate-500">{field.group}</div>
-                </SubtleCard>
-              ))}
-              {metricsLoading && filteredFields.length === 0 ? (
-                <>
-                  <LoadingTile />
-                  <LoadingTile />
-                  <LoadingTile />
-                </>
-              ) : null}
-            </div>
-
-            {filteredFields.length === 0 ? <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-6 text-center text-sm text-slate-400">没有命中字段。</div> : null}
-
-            <div className="mt-4 rounded-[1.35rem] border border-white/8 bg-white/[0.035] p-4">
-              <div className="flex items-center justify-between gap-3">
-                <div className="text-sm font-medium text-white">原始顶层字段</div>
-                <AccentPill tone="neutral">{topLevelKeys.length} keys</AccentPill>
+          {selectedMetric ? (
+            <div className="mt-4 grid gap-4 xl:grid-cols-[1.08fr_0.92fr]">
+              <div className="grid gap-3">
+                {groupedDailyFields.map((group) => (
+                  <SubtleCard className="p-4" key={group.key}>
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="text-xs uppercase tracking-[0.2em] text-slate-400">{group.label}</div>
+                      <AccentPill tone="neutral">{group.entries.length} 项</AccentPill>
+                    </div>
+                    <div className="mt-3 grid gap-x-5 gap-y-2 sm:grid-cols-2">
+                      {group.entries.map((field) => (
+                        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-3 border-b border-white/6 py-1.5 last:border-none" key={field.id}>
+                          <div className="min-w-0 text-sm text-slate-400">{field.label}</div>
+                          <div className="text-right text-sm font-semibold text-white">{field.value}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </SubtleCard>
+                ))}
               </div>
-              <div className="mt-4 flex flex-wrap gap-2">
-                {topLevelKeys.length > 0 ? (
-                  topLevelKeys.map((key) => (
-                    <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs text-slate-300" key={key}>
-                      {key}
-                    </span>
+
+              <div className="grid gap-3">
+                {dailyTrendCards.length > 0 ? (
+                  dailyTrendCards.map((chart) => (
+                    <TimeSeriesChart
+                      color={chart.color}
+                      data={chart.data}
+                      description={chart.description}
+                      key={chart.key}
+                      title={chart.title}
+                      unit={chart.unit}
+                      variant={chart.variant}
+                    />
                   ))
                 ) : (
-                  <span className="text-sm text-slate-500">暂无原始字段</span>
+                  <SubtleCard className="px-4 py-8 text-center text-sm text-slate-400">这一天暂时没有可用的分时数据。</SubtleCard>
                 )}
               </div>
             </div>
-          </>
-        ) : null}
-
-        {validationTab === "activities" ? (
-          <div className="mt-4 overflow-hidden rounded-3xl border border-white/10">
-            <div className="grid grid-cols-[1.4fr_0.8fr_0.8fr_1fr] bg-white/[0.04] px-5 py-3 text-xs uppercase tracking-[0.2em] text-slate-500">
-              <span>活动</span>
-              <span>距离</span>
-              <span>时长</span>
-              <span>日期</span>
+          ) : (
+            <div className="mt-6 rounded-[1.75rem] border border-dashed border-white/12 bg-white/[0.04] px-6 py-12 text-center text-sm text-slate-400">
+              还没有可分析的每日数据。
             </div>
-            {latestActivities.length > 0 ? (
-              <>
-                {latestActivities.map((activity) => (
-                  <div className="grid grid-cols-[1.4fr_0.8fr_0.8fr_1fr] border-t border-white/8 px-5 py-4 text-sm text-slate-300" key={activity.id}>
-                    <div>
-                      <div className="font-medium text-white">{activity.name}</div>
-                      <div className="mt-1 text-xs uppercase tracking-[0.18em] text-slate-500">{activity.type.replaceAll("_", " ")}</div>
-                    </div>
-                    <span>{formatDistance(activity.distance)}</span>
-                    <span>{formatDuration(activity.duration)}</span>
-                    <span>{activity.date}</span>
-                  </div>
-                ))}
-                {activitiesLoading ? <LoadingRows count={3} /> : null}
-              </>
-            ) : (
-              <div className="px-5 py-8 text-sm text-slate-400">{activitiesLoading ? "活动记录加载中..." : "还没有活动记录。"}</div>
-            )}
-          </div>
-        ) : null}
-
-        {validationTab === "raw" ? (
-          <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.04] p-4">
-            <div className="text-xs text-slate-400">
-              顶层字段数：{topLevelKeys.length}
-              {topLevelKeys.length > 0 ? `（${topLevelKeys.slice(0, 16).join(", ")}${topLevelKeys.length > 16 ? ", ..." : ""}）` : ""}
-            </div>
-            <pre className="mt-4 max-h-[42rem] overflow-auto rounded-2xl bg-[#040b14] p-4 text-xs text-slate-300">
-              {selectedMetric?.raw ? JSON.stringify(selectedMetric.raw, null, 2) : "暂无"}
-            </pre>
-          </div>
-        ) : null}
-      </SurfaceCard>
+          )}
+        </SurfaceCard>
       </section>
     </>
   )

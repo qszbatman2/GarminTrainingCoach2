@@ -5,6 +5,14 @@ import { useRouter } from "next/navigation"
 import { useEffect, useMemo, useState } from "react"
 
 import { AccentPill, MetricTile, SubtleCard, SurfaceCard } from "@/components/design-system"
+import {
+  buildDailyFieldEntries,
+  FIELD_SOURCE_OPTIONS,
+  type FieldActivityRecord,
+  type FieldMetricRecord,
+  getTopLevelKeys,
+  type FieldSourceKey,
+} from "@/lib/data-field-catalog"
 import { SUPPORTED_FIELD_GROUPS } from "@/lib/sync-supported-fields"
 import { formatShanghaiDateTime, getTodayShanghaiDateKey } from "@/lib/shanghai-time"
 
@@ -55,6 +63,14 @@ type DataSyncCenterProps = {
   initialBackfillJob: BackfillJobSnapshot | null
   activeSupportedFieldIds: string[]
   syncCalendarMonths: SyncCalendarMonth[]
+}
+
+type ValidationTab = "fields" | "activities" | "raw"
+
+type SelectedDayDetail = {
+  date: string
+  metric: (FieldMetricRecord & { id: string }) | null
+  activities: FieldActivityRecord[]
 }
 
 function asStringArray(value: unknown) {
@@ -154,6 +170,10 @@ export function DataSyncCenter({
   const [backfillResult, setBackfillResult] = useState("")
   const [backfillJob, setBackfillJob] = useState<BackfillJobSnapshot | null>(initialBackfillJob)
   const [resultTab, setResultTab] = useState<"failed" | "synced" | "skipped">("failed")
+  const [validationTab, setValidationTab] = useState<ValidationTab>("fields")
+  const [fieldSource, setFieldSource] = useState<FieldSourceKey>("all")
+  const [fieldSearch, setFieldSearch] = useState("")
+  const [selectedDayDetail, setSelectedDayDetail] = useState<SelectedDayDetail | null>(null)
   const [calendarMonthIndex, setCalendarMonthIndex] = useState(() => Math.max(syncCalendarMonths.length - 1, 0))
   const currentCalendar = syncCalendarMonths[calendarMonthIndex] ?? syncCalendarMonths[syncCalendarMonths.length - 1] ?? null
   const [selectedCalendarDate, setSelectedCalendarDate] = useState<string | null>(
@@ -222,6 +242,27 @@ export function DataSyncCenter({
       ? "今天默认记为待补齐，避免把尚未同步完的数据误判为缺失。"
       : CALENDAR_STATUS_META[selectedCalendarDay.status].description
     : "选择一个日期查看同步状态。"
+  const selectedDayDetailLoading = Boolean(effectiveSelectedCalendarDate) && selectedDayDetail?.date !== effectiveSelectedCalendarDate
+  const effectiveSelectedDayDetail = selectedDayDetail?.date === effectiveSelectedCalendarDate ? selectedDayDetail : null
+  const selectedDayFields = useMemo(
+    () =>
+      buildDailyFieldEntries({
+        metric: effectiveSelectedDayDetail?.metric ?? null,
+        activities: effectiveSelectedDayDetail?.activities ?? [],
+      }),
+    [effectiveSelectedDayDetail]
+  )
+  const filteredSelectedDayFields = useMemo(
+    () =>
+      selectedDayFields.filter((field) => {
+        const matchesSource = fieldSource === "all" || field.source === fieldSource
+        const keyword = fieldSearch.trim().toLowerCase()
+        const matchesSearch = keyword.length === 0 || field.label.toLowerCase().includes(keyword)
+        return matchesSource && matchesSearch
+      }),
+    [fieldSearch, fieldSource, selectedDayFields]
+  )
+  const selectedMetricTopLevelKeys = useMemo(() => getTopLevelKeys(effectiveSelectedDayDetail?.metric?.raw), [effectiveSelectedDayDetail?.metric?.raw])
   const annualCalendar = useMemo(() => {
     const months = syncCalendarMonths
     if (months.length === 0) {
@@ -318,6 +359,44 @@ export function DataSyncCenter({
 
     return () => window.clearInterval(timer)
   }, [backfillJob, router])
+
+  useEffect(() => {
+    if (!effectiveSelectedCalendarDate) {
+      return
+    }
+
+    const controller = new AbortController()
+
+    void fetch(`/api/data/day?date=${encodeURIComponent(effectiveSelectedCalendarDate)}`, {
+      cache: "no-store",
+      signal: controller.signal,
+    })
+      .then(async (response) => {
+        const data = (await response.json()) as { error?: string } & SelectedDayDetail
+        if (!response.ok) {
+          throw new Error(typeof data.error === "string" ? data.error : "读取单日数据失败")
+        }
+
+        setSelectedDayDetail({
+          date: data.date,
+          metric: data.metric,
+          activities: Array.isArray(data.activities) ? data.activities : [],
+        })
+      })
+      .catch((error: unknown) => {
+        if (error instanceof DOMException && error.name === "AbortError") {
+          return
+        }
+
+        setSelectedDayDetail({
+          date: effectiveSelectedCalendarDate,
+          metric: null,
+          activities: [],
+        })
+      })
+
+    return () => controller.abort()
+  }, [effectiveSelectedCalendarDate])
 
   async function handleSync(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -621,6 +700,14 @@ export function DataSyncCenter({
                     </div>
 
                     <p className="mt-5 text-sm leading-6 text-slate-400">{selectedCalendarNote}</p>
+                    <div className="mt-5">
+                      <Link
+                        className="inline-flex rounded-full bg-cyan-300 px-4 py-2 text-sm font-medium text-slate-950 transition hover:bg-cyan-200"
+                        href="/data"
+                      >
+                        查看当日分析
+                      </Link>
+                    </div>
                   </div>
                 ) : (
                   <div className="text-sm text-slate-500">选择一个日期查看同步状态。</div>
@@ -702,44 +789,159 @@ export function DataSyncCenter({
         </SurfaceCard>
       ) : null}
 
-      <details className="rounded-[1.75rem] border border-white/10 bg-white/[0.04] p-6 shadow-[0_18px_50px_rgba(15,23,42,0.24)] backdrop-blur-xl">
-        <summary className="cursor-pointer list-none">
-          <div className="flex items-center justify-between gap-3">
-            <h3 className="text-lg font-semibold text-white">字段覆盖详情</h3>
-            <div className="flex flex-wrap items-center gap-2">
-              <AccentPill tone="emerald">最近 30 天已拉到 {observedFieldCount}</AccentPill>
-              <AccentPill tone="violet">系统支持 {totalSupportedFieldCount}</AccentPill>
-            </div>
+      <SurfaceCard className="p-6">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <div className="text-[11px] uppercase tracking-[0.24em] text-slate-400">Field Center</div>
+            <h3 className="mt-2 text-2xl font-semibold tracking-tight text-white">字段与验证中心</h3>
+            <p className="mt-2 text-sm text-slate-400">按选中日期查看字段值，来源分成原始数据、Garmin计算、自建计算三类，并保留活动记录与 Raw JSON 作为排查入口。</p>
           </div>
-        </summary>
-        <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {SUPPORTED_FIELD_GROUPS.map((group) => (
-            <SubtleCard className="p-4" key={group.title}>
-              <div className="flex items-center justify-between gap-3">
-                <div className="text-xs uppercase tracking-[0.2em] text-slate-400">{group.title}</div>
-                <div className="text-xs text-slate-500">
-                  {group.fields.filter((field) => observedFieldIdSet.has(field.id)).length}/{group.fields.length}
-                </div>
-              </div>
-              <div className="mt-3 flex flex-wrap gap-2">
-                {group.fields.map((field) => (
-                  <span
-                    className={
-                      observedFieldIdSet.has(field.id)
-                        ? "inline-flex items-center gap-1 rounded-full border border-emerald-400/25 bg-emerald-400/12 px-2.5 py-1 text-xs text-emerald-100 shadow-[0_0_0_1px_rgba(52,211,153,0.08)_inset]"
-                        : "inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-xs text-slate-400"
-                    }
-                    key={field.id}
-                  >
-                    <span className={observedFieldIdSet.has(field.id) ? "h-1.5 w-1.5 rounded-full bg-emerald-300" : "h-1.5 w-1.5 rounded-full bg-slate-600"} />
-                    {field.label}
-                  </span>
-                ))}
-              </div>
-            </SubtleCard>
+          <div className="flex flex-wrap items-center gap-2">
+            <AccentPill tone="emerald">最近 30 天已拉到 {observedFieldCount}</AccentPill>
+            <AccentPill tone="violet">系统支持 {totalSupportedFieldCount}</AccentPill>
+            <AccentPill tone="neutral">当前日期 {effectiveSelectedCalendarDate ?? "--"}</AccentPill>
+          </div>
+        </div>
+
+        <div className="mt-4 flex flex-wrap gap-2">
+          {[
+            { key: "fields", label: "字段总览" },
+            { key: "activities", label: "活动记录" },
+            { key: "raw", label: "Raw JSON" },
+          ].map((item) => (
+            <button
+              className={`rounded-full px-4 py-2 text-sm transition ${
+                item.key === validationTab ? "bg-white text-slate-950" : "border border-white/10 bg-white/[0.04] text-slate-200 hover:bg-white/[0.08]"
+              }`}
+              key={item.key}
+              onClick={() => setValidationTab(item.key as ValidationTab)}
+              type="button"
+            >
+              {item.label}
+            </button>
           ))}
         </div>
-      </details>
+
+        {validationTab === "fields" ? (
+          <>
+            <div className="mt-4 grid gap-3 lg:grid-cols-[0.72fr_0.28fr]">
+              <input
+                className="w-full rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-white outline-none placeholder:text-slate-500 focus:border-cyan-400/60"
+                onChange={(event) => setFieldSearch(event.target.value)}
+                placeholder="搜索字段，如 睡眠 / 心率 / 负荷 / 距离"
+                type="text"
+                value={fieldSearch}
+              />
+              <div className="rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-slate-300">
+            {selectedDayDetailLoading ? "单日字段加载中..." : `已命中 ${filteredSelectedDayFields.length} 项`}
+              </div>
+            </div>
+
+            <div className="mt-3 flex flex-wrap gap-2">
+              {FIELD_SOURCE_OPTIONS.map((option) => (
+                <button
+                  className={`rounded-full px-4 py-2 text-sm transition ${
+                    option.key === fieldSource ? "bg-cyan-300 text-slate-950" : "border border-white/10 bg-white/[0.04] text-slate-200 hover:bg-white/[0.08]"
+                  }`}
+                  key={option.key}
+                  onClick={() => setFieldSource(option.key)}
+                  type="button"
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+
+            {selectedDayDetailLoading ? (
+              <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-8 text-center text-sm text-slate-400">正在读取选中日期字段...</div>
+            ) : filteredSelectedDayFields.length > 0 ? (
+              <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                {filteredSelectedDayFields.map((field) => (
+                  <SubtleCard className="p-4" key={field.id}>
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="text-sm text-slate-400">{field.label}</div>
+                        <div className="mt-3 text-2xl font-semibold tracking-tight text-white">{field.value}</div>
+                      </div>
+                      <AccentPill tone={field.source === "raw" ? "neutral" : field.source === "garmin" ? "violet" : "cyan"}>{field.sourceLabel}</AccentPill>
+                    </div>
+                    <div className="mt-3 text-xs uppercase tracking-[0.18em] text-slate-500">{field.groupLabel}</div>
+                  </SubtleCard>
+                ))}
+              </div>
+            ) : (
+              <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-8 text-center text-sm text-slate-400">这一天没有命中当前筛选条件下的字段。</div>
+            )}
+          </>
+        ) : null}
+
+        {validationTab === "activities" ? (
+          <div className="mt-4 overflow-hidden rounded-3xl border border-white/10">
+            <div className="grid grid-cols-[1.4fr_0.8fr_0.8fr] bg-white/[0.04] px-5 py-3 text-xs uppercase tracking-[0.2em] text-slate-500">
+              <span>活动</span>
+              <span>距离</span>
+              <span>时长</span>
+            </div>
+            {selectedDayDetailLoading ? (
+              <div className="px-5 py-8 text-sm text-slate-400">活动记录加载中...</div>
+            ) : (effectiveSelectedDayDetail?.activities ?? []).length > 0 ? (
+              effectiveSelectedDayDetail?.activities.map((activity) => (
+                <div className="grid grid-cols-[1.4fr_0.8fr_0.8fr] border-t border-white/8 px-5 py-4 text-sm text-slate-300" key={activity.id}>
+                  <div>
+                    <div className="font-medium text-white">{activity.name}</div>
+                    <div className="mt-1 text-xs uppercase tracking-[0.18em] text-slate-500">{activity.type.replaceAll("_", " ")}</div>
+                  </div>
+                  <span>{activity.distance ? `${(activity.distance / 1000).toFixed(1)} km` : "--"}</span>
+                  <span>
+                    {activity.duration
+                      ? `${Math.floor(Math.round(activity.duration / 60) / 60)}h ${Math.round(activity.duration / 60) % 60}m`
+                      : "--"}
+                  </span>
+                </div>
+              ))
+            ) : (
+              <div className="px-5 py-8 text-sm text-slate-400">这一天没有活动记录。</div>
+            )}
+          </div>
+        ) : null}
+
+        {validationTab === "raw" ? (
+          <div className="mt-4 grid gap-4 xl:grid-cols-[0.85fr_1.15fr]">
+            <SubtleCard className="p-4">
+              <div className="flex items-center justify-between gap-3">
+                <div className="text-sm font-medium text-white">Daily 顶层字段</div>
+                <AccentPill tone="neutral">{selectedMetricTopLevelKeys.length} keys</AccentPill>
+              </div>
+              <div className="mt-4 flex flex-wrap gap-2">
+                {selectedMetricTopLevelKeys.length > 0 ? (
+                  selectedMetricTopLevelKeys.map((key) => (
+                    <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs text-slate-300" key={key}>
+                      {key}
+                    </span>
+                  ))
+                ) : (
+                  <span className="text-sm text-slate-500">当前日期没有 Daily 原始数据。</span>
+                )}
+              </div>
+            </SubtleCard>
+            <SubtleCard className="p-4">
+              <div className="text-sm font-medium text-white">Raw JSON</div>
+              <pre className="mt-4 max-h-[42rem] overflow-auto rounded-2xl bg-[#040b14] p-4 text-xs text-slate-300">
+                {effectiveSelectedDayDetail?.metric?.raw
+                  ? JSON.stringify(
+                      {
+                        metric: effectiveSelectedDayDetail.metric.raw,
+                        activities: effectiveSelectedDayDetail.activities.map((activity) => activity.raw),
+                      },
+                      null,
+                      2
+                    )
+                  : "暂无"}
+              </pre>
+            </SubtleCard>
+          </div>
+        ) : null}
+      </SurfaceCard>
     </div>
   )
 }
