@@ -380,12 +380,9 @@ function RangeColumnChart({
 }) {
   return (
     <SubtleCard className="p-4">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h3 className="text-xl font-semibold text-white">{title}</h3>
-          <p className="mt-2 text-sm leading-6 text-slate-400">{description}</p>
-        </div>
-        <AccentPill tone="violet">0-100</AccentPill>
+      <div>
+        <h3 className="text-xl font-semibold text-white">{title}</h3>
+        <p className="mt-2 text-sm leading-6 text-slate-400">{description}</p>
       </div>
 
       <div className="mt-5 grid grid-cols-5 gap-2 md:grid-cols-7 xl:grid-cols-10">
@@ -396,6 +393,7 @@ function RangeColumnChart({
           const height = Math.max(high - low, 3)
           return (
             <div className="flex flex-col items-center gap-2" key={item.label}>
+              <div className="rounded-full border border-violet-300/18 bg-violet-300/10 px-2.5 py-0.5 text-xs font-medium text-violet-100">{item.high}</div>
               <div className="relative h-44 w-full rounded-[1.1rem] border border-white/8 bg-[#081322] px-1.5 py-2">
                 <div className="absolute inset-x-1/2 top-2 bottom-2 w-px -translate-x-1/2 bg-white/10" />
                 <div
@@ -410,10 +408,8 @@ function RangeColumnChart({
                 <div className="absolute inset-x-1/2 h-3.5 w-3.5 -translate-x-1/2 rounded-full border border-cyan-300/60 bg-cyan-300 shadow-[0_0_18px_rgba(34,211,238,0.32)]" style={{ top: `calc(${100 - low}% - 0.5rem)` }} />
               </div>
               <div className="text-center">
-                <div className="text-sm font-medium text-white">
-                  {item.low}-{item.high}
-                </div>
-                <div className="mt-1 text-xs text-slate-500">{item.label}</div>
+                <div className="rounded-full border border-cyan-300/18 bg-cyan-300/10 px-2.5 py-0.5 text-xs font-medium text-cyan-100">{item.low}</div>
+                <div className="mt-2 text-xs text-slate-500">{item.label}</div>
               </div>
             </div>
           )
@@ -481,52 +477,6 @@ function MultiLineChart({
         <div className="mt-6 rounded-3xl bg-white/[0.05] px-4 py-8 text-center text-sm text-slate-400">当前数据点不足，暂时无法绘制双线对比。</div>
       )}
     </SubtleCard>
-  )
-}
-
-function VitalSignalRow({
-  label,
-  current,
-  averageValue,
-  suffix,
-  invert = false,
-  tone = "cyan",
-}: {
-  label: string
-  current: number | null | undefined
-  averageValue: number | null | undefined
-  suffix: string
-  invert?: boolean
-  tone?: "cyan" | "violet" | "emerald" | "amber"
-}) {
-  const baseline = averageValue ?? current ?? 0
-  const relative = baseline > 0 ? (current ?? baseline) / baseline : 1
-  const width = clamp(relative * 50, 18, 100)
-  const delta = current != null && averageValue != null ? current - averageValue : null
-  const positive = invert ? (delta ?? 0) <= 0 : (delta ?? 0) >= 0
-  const toneClass =
-    tone === "violet"
-      ? "bg-violet-400"
-      : tone === "emerald"
-        ? "bg-emerald-400"
-        : tone === "amber"
-          ? "bg-amber-400"
-          : "bg-cyan-400"
-
-  return (
-    <div className="rounded-[1.2rem] border border-white/8 bg-white/[0.03] p-4">
-      <div className="flex items-center justify-between gap-4">
-        <div className="text-sm text-slate-300">{label}</div>
-        <div className="text-sm text-slate-400">7 天均值 {formatNumber(averageValue, suffix === "h" ? 1 : 0, suffix ? ` ${suffix}` : "")}</div>
-      </div>
-      <div className="mt-3 flex items-end justify-between gap-4">
-        <div className="text-2xl font-semibold text-white">{formatNumber(current, suffix === "h" ? 1 : 0, suffix ? ` ${suffix}` : "")}</div>
-        <div className={`text-sm ${delta == null ? "text-slate-500" : positive ? "text-emerald-300" : "text-rose-300"}`}>{formatDelta(current, averageValue, suffix === "h" ? 1 : 0, suffix ? ` ${suffix}` : "")}</div>
-      </div>
-      <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/[0.06]">
-        <div className={`h-full rounded-full ${toneClass}`} style={{ width: `${width}%` }} />
-      </div>
-    </div>
   )
 }
 
@@ -864,10 +814,6 @@ export function DataExplorer({ metricTotal, metrics, activityTotal, activities, 
   const hrvAverage = average(last7Metrics.map((metric) => metric.hrv))
   const hrv30Average = average(hrv30Metrics.map((metric) => metric.hrv))
   const previous30HrvAverage = average(previous30Metrics.map((metric) => metric.hrv))
-  const restingHrAverage = average(last7Metrics.map((metric) => metric.restingHr))
-  const stressAverage = average(last7Metrics.map((metric) => metric.stress))
-  const spo2Average = average(last7Metrics.map((metric) => metric.bloodOxygen))
-  const respirationAverage = average(last7Metrics.map((metric) => metric.respiration))
   const fields = useMemo(() => buildFieldEntries(selectedMetric), [selectedMetric])
   const topLevelKeys = useMemo(() => getTopLevelKeys(selectedMetric?.raw), [selectedMetric?.raw])
   const filteredFields = useMemo(
@@ -955,10 +901,25 @@ export function DataExplorer({ metricTotal, metrics, activityTotal, activities, 
           </SurfaceCard>
         )}
 
-        <RecoveryCountdownCard className="max-w-none" report={analysisReport} title="Ready To Train" />
+        <div className="grid gap-4 content-start">
+          <RecoveryCountdownCard className="max-w-none" report={analysisReport} title="Ready To Train" />
+
+          <SurfaceCard className="p-5">
+            <SectionHeader description="以下三项统一取自最近一日 Daily 数据，用来表示当前恢复状态。" eyebrow="Current Status" title="生命体征速览" />
+            <div className="mt-4 flex items-center justify-between rounded-[1.2rem] border border-white/8 bg-white/[0.03] px-4 py-3">
+              <div className="text-sm text-slate-400">数据日期</div>
+              <AccentPill tone="neutral">{latestMetric?.date ?? "--"}</AccentPill>
+            </div>
+            <div className="mt-4 grid gap-3">
+              <MetricTile detail={`数据日期 ${latestMetric?.date ?? "--"}`} label="静息心率" value={formatNumber(latestMetric?.restingHr, 0, " bpm")} />
+              <MetricTile detail={`数据日期 ${latestMetric?.date ?? "--"}`} label="压力" value={formatNumber(latestMetric?.stress)} />
+              <MetricTile detail={`数据日期 ${latestMetric?.date ?? "--"}`} label="呼吸频率" value={formatNumber(latestMetric?.respiration, 0, " brpm")} />
+            </div>
+          </SurfaceCard>
+        </div>
       </section>
 
-      <section className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
+      <section>
         <SurfaceCard className="p-5">
         <SectionHeader
           actions={
@@ -967,11 +928,11 @@ export function DataExplorer({ metricTotal, metrics, activityTotal, activities, 
             </Link>
           }
           description="先看近 10 天睡眠结构，再看近 30 天 HRV 趋势，恢复判断集中在这一屏完成。"
-          eyebrow="Sleep & HRV"
+          eyebrow="Sleep Recovery"
           title="睡眠与恢复"
         />
 
-        <div className="mt-4 grid gap-4">
+        <div className="mt-4 grid gap-4 xl:grid-cols-[1.08fr_0.92fr]">
           <StackedColumnChart
             data={sleepCompositionData.map((item) => ({
               label: item.label,
@@ -1036,27 +997,12 @@ export function DataExplorer({ metricTotal, metrics, activityTotal, activities, 
               <div className="mt-6 rounded-3xl bg-white/[0.05] px-4 py-8 text-center text-sm text-slate-400">当前 HRV 数据点不足，暂时无法绘制 30 天趋势。</div>
             )}
           </SubtleCard>
-        </div>
-      </SurfaceCard>
 
-        <div className="grid gap-4">
-        <SurfaceCard className="p-5">
-          <SectionHeader description="用高低点区间看全天 Body Battery 振幅，比两条独立折线更接近真实恢复体验。" eyebrow="Energy Window" title="能量与压力" />
-          <div className="mt-4">
+          <div className="xl:col-span-2">
             <RangeColumnChart data={bodyBatteryRangeData} description="每天一根区间柱，顶部是高点，底部是低点，中间的振幅代表白天消耗与夜间回充。" title="Body Battery 高低点" />
           </div>
-        </SurfaceCard>
-
-        <SurfaceCard className="p-5">
-          <SectionHeader description="把心率、压力、血氧和呼吸都改成信号条，快速判断今天是否偏离常态。" eyebrow="Vitals" title="生命体征速览" />
-          <div className="mt-4 grid gap-3">
-            <VitalSignalRow averageValue={restingHrAverage} current={latestMetric?.restingHr} invert label="静息心率" suffix="bpm" tone="amber" />
-            <VitalSignalRow averageValue={stressAverage} current={latestMetric?.stress} invert label="压力" suffix="" tone="amber" />
-            <VitalSignalRow averageValue={spo2Average} current={latestMetric?.bloodOxygen} label="血氧" suffix="%" tone="emerald" />
-            <VitalSignalRow averageValue={respirationAverage} current={latestMetric?.respiration} invert label="呼吸频率" suffix="brpm" tone="violet" />
-          </div>
-        </SurfaceCard>
         </div>
+      </SurfaceCard>
       </section>
 
       <section className="grid gap-4 xl:grid-cols-[1.08fr_0.92fr]">
