@@ -363,12 +363,18 @@ function compressPoints(points: NumericPoint[], maxPoints = 48) {
 
 function normalizePoint(item: unknown, index: number, valueKeys: string[]): NumericPoint | null {
   if (Array.isArray(item)) {
-    const [first, second] = item
-    const timestamp = parseTimestamp(first)
-    if (timestamp && typeof second === "number" && Number.isFinite(second)) {
+    const [first, second, ...rest] = item
+    const looksLikeTimestamp = typeof first === "string" || (typeof first === "number" && Number.isFinite(first) && Math.abs(first) >= 100000)
+    const timestamp = looksLikeTimestamp ? parseTimestamp(first) : null
+    const tupleValue =
+      typeof second === "number" && Number.isFinite(second)
+        ? second
+        : rest.find((value): value is number => typeof value === "number" && Number.isFinite(value) && value >= 0) ?? null
+
+    if (timestamp && tupleValue != null) {
       return {
         label: formatTimeLabel(timestamp),
-        value: second,
+        value: tupleValue,
       }
     }
 
