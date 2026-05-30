@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "vercel-build": "prisma migrate deploy && prisma generate && next build",
+    "db:migrate:deploy": "prisma migrate deploy",
+    "vercel-build": "next build",
     "start": "next start",
     "lint": "eslint",
     "repair:timezone": "node scripts/repair-shanghai-times.mjs",
