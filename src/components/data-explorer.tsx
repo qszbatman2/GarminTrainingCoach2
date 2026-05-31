@@ -1380,7 +1380,7 @@ export function DataExplorer({ metricTotal, metrics, activityTotal, activities, 
                       {group.entries.map((field) => (
                         <div className="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-3 border-b border-white/6 py-1.5 last:border-none" key={field.id}>
                           <div className="min-w-0 text-sm text-slate-400">{field.label}</div>
-                          <div className="text-right text-sm font-semibold text-white">{field.value}</div>
+                          <div className={`text-right text-sm font-semibold ${field.value === "--" ? "text-slate-500" : "text-white"}`}>{field.value}</div>
                         </div>
                       ))}
                     </div>

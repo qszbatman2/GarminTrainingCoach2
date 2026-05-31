@@ -664,7 +664,7 @@ export function buildDailyFieldEntries({
     source: definition.source,
     sourceLabel: sourceLabelByKey.get(definition.source) ?? definition.source,
     value: definition.getValue(context),
-  })).filter((entry) => entry.value !== "--")
+  }))
 }
 
 export function getTopLevelKeys(raw: unknown) {

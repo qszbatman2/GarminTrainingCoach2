@@ -833,7 +833,7 @@ export function DataSyncCenter({
                 value={fieldSearch}
               />
               <div className="rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-slate-300">
-            {selectedDayDetailLoading ? "单日字段加载中..." : `已命中 ${filteredSelectedDayFields.length} 项`}
+                {selectedDayDetailLoading ? "单日字段加载中..." : `当前显示 ${filteredSelectedDayFields.length} 项`}
               </div>
             </div>
 
@@ -857,11 +857,11 @@ export function DataSyncCenter({
             ) : filteredSelectedDayFields.length > 0 ? (
               <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                 {filteredSelectedDayFields.map((field) => (
-                  <SubtleCard className="p-4" key={field.id}>
+                  <SubtleCard className={field.value === "--" ? "border-white/[0.05] bg-white/[0.02] p-4" : "p-4"} key={field.id}>
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
                         <div className="text-sm text-slate-400">{field.label}</div>
-                        <div className="mt-3 text-2xl font-semibold tracking-tight text-white">{field.value}</div>
+                        <div className={`mt-3 text-2xl font-semibold tracking-tight ${field.value === "--" ? "text-slate-500" : "text-white"}`}>{field.value}</div>
                       </div>
                       <AccentPill tone={field.source === "raw" ? "neutral" : field.source === "garmin" ? "violet" : "cyan"}>{field.sourceLabel}</AccentPill>
                     </div>
