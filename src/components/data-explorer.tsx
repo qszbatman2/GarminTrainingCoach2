@@ -283,6 +283,21 @@ function buildTrendSeries(data: NumericPoint[]) {
   }))
 }
 
+function buildRollingAverageSeries(data: NumericPoint[], windowSize: number) {
+  if (data.length === 0) {
+    return []
+  }
+
+  return data.map((item, index) => {
+    const window = data.slice(Math.max(0, index - windowSize + 1), index + 1)
+    const value = average(window.map((point) => point.value)) ?? item.value
+    return {
+      label: item.label,
+      value: Number(value.toFixed(1)),
+    }
+  })
+}
+
 function StackedColumnChart({
   title,
   description,
@@ -636,6 +651,90 @@ function TimeSeriesChart({
   )
 }
 
+function WeightTrendChart({
+  title,
+  description,
+  data,
+  averageData,
+  latestWeight,
+  weeklyAverage,
+  monthlyDelta,
+}: {
+  title: string
+  description: string
+  data: NumericPoint[]
+  averageData: NumericPoint[]
+  latestWeight: number | null
+  weeklyAverage: number | null
+  monthlyDelta: number | null
+}) {
+  const bounds = getChartBounds([data, averageData])
+
+  return (
+    <SubtleCard className="p-4">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h3 className="text-xl font-semibold text-white">{title}</h3>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-400">{description}</p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <AccentPill tone="neutral">{data.length} 天记录</AccentPill>
+          <AccentPill tone="violet">7 日均线</AccentPill>
+        </div>
+      </div>
+
+      <div className="mt-4 grid gap-3 md:grid-cols-3">
+        <div className="rounded-[1.1rem] border border-cyan-400/14 bg-cyan-400/[0.08] px-4 py-3">
+          <div className="text-sm text-slate-300">最新体重</div>
+          <div className="mt-2 font-[family:var(--font-display)] text-3xl font-semibold tracking-tight text-white">{formatNumber(latestWeight, 1, " kg")}</div>
+          <div className="mt-2 text-sm text-slate-400">最近一次 Garmin 体重记录</div>
+        </div>
+        <div className="rounded-[1.1rem] border border-violet-400/14 bg-violet-400/[0.08] px-4 py-3">
+          <div className="text-sm text-slate-300">近 7 天均值</div>
+          <div className="mt-2 font-[family:var(--font-display)] text-3xl font-semibold tracking-tight text-white">{formatNumber(weeklyAverage, 1, " kg")}</div>
+          <div className="mt-2 text-sm text-slate-400">过滤单日波动后更接近真实趋势</div>
+        </div>
+        <div className="rounded-[1.1rem] border border-amber-400/14 bg-amber-400/[0.08] px-4 py-3">
+          <div className="text-sm text-slate-300">近 30 天净变化</div>
+          <div className="mt-2 font-[family:var(--font-display)] text-3xl font-semibold tracking-tight text-white">
+            {monthlyDelta == null ? "--" : `${monthlyDelta > 0 ? "+" : ""}${monthlyDelta.toFixed(1)} kg`}
+          </div>
+          <div className="mt-2 text-sm text-slate-400">以当前窗口首日为基准</div>
+        </div>
+      </div>
+
+      <div className="mt-4 flex flex-wrap gap-2">
+        <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs text-slate-300">
+          <span className="h-2.5 w-2.5 rounded-full bg-cyan-300" />
+          每日体重
+        </span>
+        <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs text-slate-300">
+          <span className="h-0.5 w-4 bg-violet-300" />
+          7 日均线
+        </span>
+      </div>
+
+      {data.length > 1 ? (
+        <>
+          <svg className="mt-5 block h-48 w-full" preserveAspectRatio="none" viewBox="0 0 100 100">
+            <path d="M0,76 100,76" fill="none" stroke="rgba(148,163,184,0.14)" strokeDasharray="4 4" />
+            <path d="M0,48 100,48" fill="none" stroke="rgba(148,163,184,0.1)" strokeDasharray="4 4" />
+            <polyline fill="none" points={buildLinePath(data, bounds.min, bounds.max)} stroke="#67e8f9" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
+            <polyline fill="none" points={buildLinePath(averageData, bounds.min, bounds.max)} stroke="#c4b5fd" strokeDasharray="5 4" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
+          </svg>
+          <div className="mt-2 flex items-center justify-between text-xs text-slate-500">
+            <span>{data[0]?.label}</span>
+            <span>{data[Math.floor(data.length / 2)]?.label}</span>
+            <span>{data[data.length - 1]?.label}</span>
+          </div>
+        </>
+      ) : (
+        <div className="mt-6 rounded-3xl bg-white/[0.05] px-4 py-8 text-center text-sm text-slate-400">当前体重数据点不足，暂时无法绘制连续趋势。</div>
+      )}
+    </SubtleCard>
+  )
+}
+
 export function DataExplorer({ metricTotal, metrics, activityTotal, activities, initialAnalysisReport }: DataExplorerProps) {
   const [metricsState, setMetricsState] = useState(metrics)
   const [activitiesState, setActivitiesState] = useState(activities)
@@ -917,6 +1016,16 @@ export function DataExplorer({ metricTotal, metrics, activityTotal, activities, 
         .filter((item): item is NumericPoint => item !== null),
     [hrv30Metrics]
   )
+  const weightMetrics = useMemo(() => metricsAsc.filter((metric) => metric.weight != null).slice(-30), [metricsAsc])
+  const weightSeries = useMemo<NumericPoint[]>(
+    () => weightMetrics.map((metric) => ({ label: metric.date.slice(5), value: Number((metric.weight ?? 0).toFixed(1)) })),
+    [weightMetrics]
+  )
+  const weightAverageSeries = useMemo(() => buildRollingAverageSeries(weightSeries, 7), [weightSeries])
+  const latestWeight = weightMetrics[weightMetrics.length - 1]?.weight ?? null
+  const weeklyWeightAverage = useMemo(() => average(weightMetrics.slice(-7).map((metric) => metric.weight)), [weightMetrics])
+  const weightMonthlyDelta =
+    weightMetrics.length > 1 && weightMetrics[0]?.weight != null && latestWeight != null ? latestWeight - weightMetrics[0].weight : null
   const hrvTrendSeries = useMemo(() => buildTrendSeries(hrv30Series), [hrv30Series])
   const hrvChartBounds = useMemo(() => getChartBounds([hrv30Series, hrvTrendSeries]), [hrv30Series, hrvTrendSeries])
   const hrvAverage = average(last7Metrics.map((metric) => metric.hrv))
@@ -1180,6 +1289,27 @@ export function DataExplorer({ metricTotal, metrics, activityTotal, activities, 
           />
         </div>
       </SurfaceCard>
+      </section>
+
+      <section>
+        <SurfaceCard className="p-5">
+          <SectionHeader
+            description="把最近 30 天体重按日连成线，主线看每天波动，7 日均线专门过滤掉称重噪声。"
+            eyebrow="Weight Trend"
+            title="体重趋势"
+          />
+          <div className="mt-4">
+            <WeightTrendChart
+              averageData={weightAverageSeries}
+              data={weightSeries}
+              description="先看日线是否突然抬升或下探，再看均线有没有持续偏离，避免被单天饮食和补水误导。"
+              latestWeight={latestWeight}
+              monthlyDelta={weightMonthlyDelta}
+              title="每日体重变化"
+              weeklyAverage={weeklyWeightAverage}
+            />
+          </div>
+        </SurfaceCard>
       </section>
 
       <section>
