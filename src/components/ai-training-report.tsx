@@ -42,6 +42,33 @@ function formatTime(value?: string) {
   return formatShanghaiDateTime(value)
 }
 
+function renderFormattedAnalysis(text: string) {
+  const lines = text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+
+  return lines.map((line, index) => {
+    const parts = line.split(/(\*\*.*?\*\*)/g).filter(Boolean)
+
+    return (
+      <p className="text-sm leading-6 text-slate-200" key={`${index}-${line}`}>
+        {parts.map((part, partIndex) => {
+          if (part.startsWith("**") && part.endsWith("**") && part.length > 4) {
+            return (
+              <strong className="font-semibold text-white" key={`${index}-${partIndex}`}>
+                {part.slice(2, -2)}
+              </strong>
+            )
+          }
+
+          return <span key={`${index}-${partIndex}`}>{part}</span>
+        })}
+      </p>
+    )
+  })
+}
+
 export function AITrainingReport({
   initialReport,
   trainingGoal,
@@ -121,7 +148,7 @@ export function AITrainingReport({
               <div className="rounded-[1.2rem] border border-white/10 bg-white/[0.04] p-5">
                 <div className="text-sm text-slate-300">今日建议</div>
                 <div className="mt-2 text-2xl font-semibold tracking-tight text-white">{result.analysis.todayAdvice}</div>
-                <p className="mt-3 text-sm leading-6 text-slate-200">{result.analysis.reasonAnalysis}</p>
+                <div className="mt-3 space-y-2">{renderFormattedAnalysis(result.analysis.reasonAnalysis)}</div>
               </div>
 
               <div className="rounded-[1.2rem] border border-white/10 bg-white/[0.04] p-5">
@@ -136,7 +163,7 @@ export function AITrainingReport({
                   <AccentPill tone="neutral">强度 {result.analysis.weeklyLoadAssessment.intensityConclusion}</AccentPill>
                 </div>
                 <div className="mt-4 text-lg font-semibold tracking-tight text-white">{result.analysis.weeklyLoadAssessment.advice}</div>
-                <p className="mt-3 text-sm leading-6 text-slate-200">{result.analysis.weeklyLoadAssessment.reasonAnalysis}</p>
+                <div className="mt-3 space-y-2">{renderFormattedAnalysis(result.analysis.weeklyLoadAssessment.reasonAnalysis)}</div>
               </div>
             </div>
           </SubtleCard>

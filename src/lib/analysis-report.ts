@@ -14,7 +14,7 @@ import {
 } from "@/lib/training-analysis"
 
 const REPORT_TYPE = "latest"
-const ANALYSIS_VERSION = "training-rule-v15-prompt-detail-goals"
+const ANALYSIS_VERSION = "training-rule-v16-prompt-format-bold-lines"
 
 function normalizeJson<T>(value: unknown) {
   return JSON.parse(JSON.stringify(value)) as T

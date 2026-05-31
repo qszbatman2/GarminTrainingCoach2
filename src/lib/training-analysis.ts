@@ -1778,7 +1778,7 @@ export function parseTrainingAnalysis(content: string, context: TrainingContext)
   try {
     const data = JSON.parse(extractJsonObject(content)) as Partial<TrainingAnalysisResult>
     const reasonAnalysis =
-      typeof data.reasonAnalysis === "string" && data.reasonAnalysis.trim().length > 0 ? data.reasonAnalysis.trim().slice(0, 300) : fallback.reasonAnalysis
+      typeof data.reasonAnalysis === "string" && data.reasonAnalysis.trim().length > 0 ? data.reasonAnalysis.trim().slice(0, 400) : fallback.reasonAnalysis
     const weeklyData = typeof data.weeklyLoadAssessment === "object" && data.weeklyLoadAssessment ? data.weeklyLoadAssessment as Partial<TrainingAnalysisResult["weeklyLoadAssessment"]> : {}
 
     return {
@@ -1792,7 +1792,7 @@ export function parseTrainingAnalysis(content: string, context: TrainingContext)
         advice: typeof weeklyData.advice === "string" && weeklyData.advice.trim() ? weeklyData.advice.trim() : fallback.weeklyLoadAssessment.advice,
         reasonAnalysis:
           typeof weeklyData.reasonAnalysis === "string" && weeklyData.reasonAnalysis.trim()
-            ? weeklyData.reasonAnalysis.trim().slice(0, 300)
+            ? weeklyData.reasonAnalysis.trim().slice(0, 400)
             : fallback.weeklyLoadAssessment.reasonAnalysis,
       },
     }
