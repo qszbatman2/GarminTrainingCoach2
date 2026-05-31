@@ -1,13 +1,20 @@
 import { Prisma } from "@prisma/client"
 
+import { getMissingBackfillDates } from "@/lib/garmin-backfill-planner"
 import prisma from "@/lib/prisma"
 import { formatUpdatedFieldsSummary, getDateKey, mergeUpdatedFields, syncGarminDateForUser } from "@/lib/garmin-sync"
-import { addShanghaiDays, getShanghaiDateKeyWithOffset, parseDateKeyAsUtc } from "@/lib/shanghai-time"
+import { addShanghaiDays, getShanghaiDateKeyWithOffset, getShanghaiDayRange, parseDateKeyAsUtc } from "@/lib/shanghai-time"
 
 const BACKFILL_SECRET = () => process.env.CRON_SECRET ?? process.env.AUTH_SECRET ?? ""
 const JOB_CHUNK_SIZE = 4
 
 type JsonStringArray = Prisma.InputJsonValue & string[]
+type GarminBoundUser = {
+  id: string
+  email?: string
+  garminEmail: string | null
+  garminPassword: string | null
+}
 
 function arrayFromJson(value: unknown) {
   return Array.isArray(value) ? value.map((item) => String(item)) : []
@@ -45,38 +52,25 @@ export function getBackfillDateRange(days: number) {
   return dates
 }
 
-export async function createBackfillJob(userId: string, days = 30) {
-  const boundedDays = Math.max(1, Math.min(days, 30))
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    select: {
-      id: true,
-      garminEmail: true,
-      garminPassword: true,
-    },
-  })
+function normalizeBackfillDays(days: number, maxDays = 30) {
+  return Math.max(1, Math.min(days, maxDays))
+}
 
-  if (!user) {
-    throw new Error("用户不存在")
-  }
-
-  if (!user.garminEmail || !user.garminPassword) {
-    throw new Error("请先绑定 Garmin 账号")
-  }
-
-  const targetDates = getBackfillDateRange(boundedDays)
-
-  const job = await prisma.backfillJob.create({
+async function createBackfillJobWithDates(user: GarminBoundUser, days: number, targetDates: string[]) {
+  return prisma.backfillJob.create({
     data: {
-      userId,
+      userId: user.id,
       status: targetDates.length > 0 ? "pending" : "completed",
-      days: boundedDays,
+      days,
       totalDates: targetDates.length,
       targetDates: toJsonArray(targetDates),
       syncedDates: toJsonArray([]),
       skippedDates: toJsonArray([]),
       failedDates: toJsonArray([]),
-      message: targetDates.length > 0 ? "任务已创建，将逐日比对远端差异并补齐缺口" : "最近 30 天没有可检查的日期",
+      message:
+        targetDates.length > 0
+          ? "任务已创建，将逐日抓取缺失数据；已有日期不会改动"
+          : `最近 ${days} 天没有需要补拉的日期`,
       finishedAt: targetDates.length > 0 ? null : new Date(),
     },
     select: {
@@ -94,8 +88,30 @@ export async function createBackfillJob(userId: string, days = 30) {
       finishedAt: true,
     },
   })
+}
 
-  return job
+export async function createBackfillJob(userId: string, days = 30) {
+  const boundedDays = normalizeBackfillDays(days, 30)
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: {
+      id: true,
+      email: true,
+      garminEmail: true,
+      garminPassword: true,
+    },
+  })
+
+  if (!user) {
+    throw new Error("用户不存在")
+  }
+
+  if (!user.garminEmail || !user.garminPassword) {
+    throw new Error("请先绑定 Garmin 账号")
+  }
+
+  const targetDates = getBackfillDateRange(boundedDays)
+  return createBackfillJobWithDates(user, boundedDays, targetDates)
 }
 
 export async function getBackfillJob(jobId: string, userId?: string) {
@@ -150,6 +166,137 @@ export async function getLatestBackfillJob(userId: string) {
 
 export function getBackfillSecret() {
   return BACKFILL_SECRET()
+}
+
+async function getUsersWithActiveBackfillJobs() {
+  const jobs = await prisma.backfillJob.findMany({
+    where: {
+      status: {
+        in: ["pending", "running"],
+      },
+    },
+    select: {
+      userId: true,
+    },
+  })
+
+  return new Set(jobs.map((job) => job.userId))
+}
+
+async function getMissingDatesForUser(userId: string, days: number) {
+  const boundedDays = normalizeBackfillDays(days, 90)
+  const targetDates = getBackfillDateRange(boundedDays)
+  const oldestDate = targetDates[0]
+  const latestDate = targetDates[targetDates.length - 1]
+
+  if (!oldestDate || !latestDate) {
+    return []
+  }
+
+  const metricStart = parseDateKeyAsUtc(oldestDate)
+  const metricEnd = parseDateKeyAsUtc(latestDate)
+  const activityStart = getShanghaiDayRange(metricStart).start
+  const activityEndExclusive = getShanghaiDayRange(metricEnd).endExclusive
+  const [metrics, activities] = await Promise.all([
+    prisma.dailyMetric.findMany({
+      where: {
+        userId,
+        date: {
+          gte: metricStart,
+          lte: metricEnd,
+        },
+      },
+      select: {
+        date: true,
+      },
+    }),
+    prisma.activity.findMany({
+      where: {
+        userId,
+        date: {
+          gte: activityStart,
+          lt: activityEndExclusive,
+        },
+      },
+      select: {
+        date: true,
+      },
+    }),
+  ])
+
+  return getMissingBackfillDates({
+    days: boundedDays,
+    rangeEndDate: latestDate,
+    metricDates: metrics.map((item) => getDateKey(item.date)),
+    activityDates: activities.map((item) => getDateKey(item.date)),
+  })
+}
+
+export async function createAllUsersBackfillJobs(days = 90) {
+  const boundedDays = normalizeBackfillDays(days, 90)
+  const users = await prisma.user.findMany({
+    where: {
+      garminEmail: { not: null },
+      garminPassword: { not: null },
+    },
+    select: {
+      id: true,
+      email: true,
+      garminEmail: true,
+      garminPassword: true,
+    },
+    orderBy: {
+      createdAt: "asc",
+    },
+  })
+  const usersWithActiveJobs = await getUsersWithActiveBackfillJobs()
+  const createdJobs: Array<{ id: string; userId: string; email: string; missingDates: number }> = []
+  const skippedUsers: Array<{ userId: string; email: string; reason: string }> = []
+
+  for (const user of users) {
+    if (!user.garminEmail || !user.garminPassword) {
+      skippedUsers.push({
+        userId: user.id,
+        email: user.email,
+        reason: "Garmin 账号未绑定完整",
+      })
+      continue
+    }
+
+    if (usersWithActiveJobs.has(user.id)) {
+      skippedUsers.push({
+        userId: user.id,
+        email: user.email,
+        reason: "已有进行中的补拉任务",
+      })
+      continue
+    }
+
+    const missingDates = await getMissingDatesForUser(user.id, boundedDays)
+    if (missingDates.length === 0) {
+      skippedUsers.push({
+        userId: user.id,
+        email: user.email,
+        reason: `最近 ${boundedDays} 天已有数据，跳过`,
+      })
+      continue
+    }
+
+    const job = await createBackfillJobWithDates(user, boundedDays, missingDates)
+    createdJobs.push({
+      id: job.id,
+      userId: user.id,
+      email: user.email,
+      missingDates: missingDates.length,
+    })
+  }
+
+  return {
+    days: boundedDays,
+    scannedUsers: users.length,
+    createdJobs,
+    skippedUsers,
+  }
 }
 
 export async function triggerBackfillRunner(origin: string, jobId: string) {
