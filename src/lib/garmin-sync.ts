@@ -1,5 +1,6 @@
 import { Prisma } from "@prisma/client"
 
+import { getGarminFetchPolicy, shouldRetryGarminFetch } from "@/lib/garmin-fetch-policy"
 import prisma from "@/lib/prisma"
 import { formatShanghaiDateKey, getShanghaiDayRange, parseDateKeyAsUtc, parseGarminDateTime } from "@/lib/shanghai-time"
 
@@ -42,7 +43,6 @@ const REQUIRED_DAILY_KEYS = [
 ]
 
 const REQUIRED_ACTIVITY_KEYS = ["details", "splits", "split_summaries", "hr_in_timezones"]
-const GARMIN_FETCH_TIMEOUT_MS = 45_000
 const DAILY_UPDATE_LABELS: Record<string, string[]> = {
   stats: ["静息心率/压力/热量"],
   sleep: ["睡眠"],
@@ -369,35 +369,48 @@ export async function fetchGarminPayload(
   mode: GarminSyncMode = "full"
 ): Promise<GarminPayload> {
   const pythonServiceUrl = process.env.GARMIN_SERVICE_URL || "http://127.0.0.1:8000"
-  const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), GARMIN_FETCH_TIMEOUT_MS)
+  const policy = getGarminFetchPolicy(mode)
+  let lastError: unknown
 
-  let garminRes: Response
-  try {
-    garminRes = await fetch(`${pythonServiceUrl}/api/garmin/sync`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email: garminEmail, password: garminPassword, date, mode }),
-      signal: controller.signal,
-    })
-  } catch (error: unknown) {
-    if (error instanceof Error && error.name === "AbortError") {
-      throw new Error(`Garmin 服务请求超时（>${Math.floor(GARMIN_FETCH_TIMEOUT_MS / 1000)}s）`)
+  for (let attempt = 0; attempt <= policy.retryCount; attempt += 1) {
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), policy.timeoutMs)
+
+    try {
+      const garminRes = await fetch(`${pythonServiceUrl}/api/garmin/sync`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: garminEmail, password: garminPassword, date, mode }),
+        signal: controller.signal,
+      })
+
+      if (!garminRes.ok) {
+        const errorData = await garminRes.json().catch(() => ({}))
+        const detail = typeof errorData?.detail === "string" ? errorData.detail : "Failed to fetch data from Garmin Service"
+        throw new Error(detail)
+      }
+
+      const payload = await garminRes.json()
+      return payload.data ?? {}
+    } catch (error: unknown) {
+      lastError = error
+      if (!shouldRetryGarminFetch(error, attempt, policy.retryCount)) {
+        if (error instanceof Error && error.name === "AbortError") {
+          throw new Error(`Garmin 服务请求超时（>${Math.floor(policy.timeoutMs / 1000)}s）`)
+        }
+
+        throw error
+      }
+    } finally {
+      clearTimeout(timeout)
     }
-
-    throw error
-  } finally {
-    clearTimeout(timeout)
   }
 
-  if (!garminRes.ok) {
-    const errorData = await garminRes.json().catch(() => ({}))
-    const detail = typeof errorData?.detail === "string" ? errorData.detail : "Failed to fetch data from Garmin Service"
-    throw new Error(detail)
+  if (lastError instanceof Error && lastError.name === "AbortError") {
+    throw new Error(`Garmin 服务请求超时（>${Math.floor(policy.timeoutMs / 1000)}s）`)
   }
 
-  const payload = await garminRes.json()
-  return payload.data ?? {}
+  throw lastError instanceof Error ? lastError : new Error("Failed to fetch data from Garmin Service")
 }
 
 export async function syncGarminDateForUser({
