@@ -1,4 +1,5 @@
 import { getActivityDisplayValues, getMetricDisplayValues } from "@/lib/garmin-data"
+import { estimateRecoveryHours } from "@/lib/recovery-estimation"
 import { formatShanghaiDateTime, parseGarminDateTime } from "@/lib/shanghai-time"
 
 export type FieldSourceKey = "all" | "raw" | "garmin" | "derived"
@@ -53,6 +54,7 @@ type DailyFieldContext = {
   averageAerobicTrainingEffect: number | null
   averageAnaerobicTrainingEffect: number | null
   lightSleepHours: number | null
+  estimatedRecoveryHours: number | null
 }
 
 type DailyFieldDefinition = {
@@ -182,6 +184,17 @@ function buildDailyFieldContext(metric: FieldMetricRecord | null, activities: Fi
   const totalDistanceMeters = sumNullable(activities.map((activity) => activity.distance))
   const totalDurationSeconds = sumNullable(activities.map((activity) => activity.duration))
   const totalTrainingLoad = sumNullable(activityDisplays.map((activity) => activity.trainingLoad))
+  const estimatedRecoveryHours = latestActivity
+    ? estimateRecoveryHours({
+        durationMin: latestActivity.duration != null ? Number((latestActivity.duration / 60).toFixed(0)) : null,
+        distanceKm: latestActivity.distance != null ? Number((latestActivity.distance / 1000).toFixed(1)) : null,
+        trainingLoad: latestActivityDisplay?.trainingLoad ?? null,
+        aerobicTrainingEffect: latestActivityDisplay?.aerobicTrainingEffect ?? null,
+        anaerobicTrainingEffect: latestActivityDisplay?.anaerobicTrainingEffect ?? null,
+        moderateIntensityMinutes: latestActivityDisplay?.moderateIntensityMinutes ?? null,
+        vigorousIntensityMinutes: latestActivityDisplay?.vigorousIntensityMinutes ?? null,
+      })
+    : null
   const lightSleepHours =
     metricDisplay?.sleepDurationHours != null
       ? Math.max(
@@ -219,6 +232,7 @@ function buildDailyFieldContext(metric: FieldMetricRecord | null, activities: Fi
     averageAerobicTrainingEffect: averageNullable(activityDisplays.map((activity) => activity.aerobicTrainingEffect)),
     averageAnaerobicTrainingEffect: averageNullable(activityDisplays.map((activity) => activity.anaerobicTrainingEffect)),
     lightSleepHours,
+    estimatedRecoveryHours,
   }
 }
 
@@ -551,6 +565,13 @@ const DAILY_FIELD_DEFINITIONS: DailyFieldDefinition[] = [
     group: "load",
     source: "garmin",
     getValue: ({ latestActivityDisplay }) => formatNumber(toHours(latestActivityDisplay?.recoveryHours), 1, " h"),
+  },
+  {
+    id: "estimatedRecoveryHours",
+    label: "估算恢复时长",
+    group: "load",
+    source: "derived",
+    getValue: ({ estimatedRecoveryHours }) => formatNumber(estimatedRecoveryHours, 1, " h"),
   },
   {
     id: "acuteTrainingLoad",
