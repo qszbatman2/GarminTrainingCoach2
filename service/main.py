@@ -118,6 +118,11 @@ def sync_garmin_data(req: SyncRequest):
                     activity_id = ""
 
                 if activity_id:
+                    activity_summary = safe_fetch(client.get_activity, activity_id)
+                    if isinstance(activity_summary, dict):
+                        act["summary"] = activity_summary
+                        for key, value in activity_summary.items():
+                            act.setdefault(key, value)
                     act["details"] = safe_fetch(client.get_activity_details, activity_id)
                     act["splits"] = safe_fetch(client.get_activity_splits, activity_id)
                     act["split_summaries"] = safe_fetch(client.get_activity_split_summaries, activity_id)
