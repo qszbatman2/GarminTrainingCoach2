@@ -1,4 +1,5 @@
 import { getActivityDisplayValues, getMetricDisplayValues } from "@/lib/garmin-data"
+import { estimateRecoveryHours } from "@/lib/recovery-estimation"
 import {
   addShanghaiDays,
   formatShanghaiDateKey,
@@ -40,6 +41,17 @@ type WeeklyLoadConclusion = "不足" | "偏低" | "合理" | "偏高" | "过高"
 type WeeklyOverallConclusion = "训练不足" | "训练合理" | "训练偏多" | "过度风险" | "未知"
 type WeeklyLoadFocus = "distance" | "duration"
 type WeeklyIntensitySource = "full" | "partial" | "minimal"
+type GoalCategory = "ftp" | "climbing" | "endurance" | "recovery" | "weightLoss" | "general"
+type WeeklyHabitPattern = "周末集中" | "周中集中" | "分布均衡" | "数据不足"
+type WorkoutSuggestion = {
+  label: string
+  intensity: string
+  durationMin: {
+    min: number
+    max: number
+  } | null
+  summary: string
+}
 
 type MetricDisplayValues = ReturnType<typeof getMetricDisplayValues>
 type ActivityDisplayValues = ReturnType<typeof getActivityDisplayValues>
@@ -104,6 +116,11 @@ type PeriodComparison = {
 
 export type TrainingContext = {
   generatedAt: string
+  goal: {
+    raw: string | null
+    category: GoalCategory
+    keywords: string[]
+  }
   dateRange: {
     metricStart: string | null
     metricEnd: string | null
@@ -206,6 +223,14 @@ export type TrainingContext = {
     monthStart: string | null
     weekElapsedDays: number
     monthElapsedDays: number
+    habit: {
+      pattern: WeeklyHabitPattern
+      recent4WeekCompletionRatio: number | null
+      currentVsHabitRatio: number | null
+      sameWeekdaySessionRate: number | null
+      sameWeekdayAverageDurationMin: number | null
+      sameWeekdayAverageDistanceKm: number | null
+    }
     load: {
       focus: WeeklyLoadFocus
       totals: {
@@ -255,6 +280,7 @@ export type TrainingContext = {
     shouldTrain: DecisionStatus
     todayAdvice: string
     ruleReason: string
+    workoutSuggestion: WorkoutSuggestion | null
   }
   missingData: string[]
 }
@@ -388,56 +414,6 @@ function normalizeMinutes(value: number | null) {
   }
 
   return round(value > 1440 ? value / 60 : value, 0)
-}
-
-function estimateRecoveryHours(activity: {
-  durationMin: number | null
-  distanceKm: number | null
-  trainingLoad: number | null
-  aerobicTrainingEffect: number | null
-  anaerobicTrainingEffect: number | null
-  moderateIntensityMinutes: number | null
-  vigorousIntensityMinutes: number | null
-}) {
-  const { durationMin, distanceKm, trainingLoad, aerobicTrainingEffect, anaerobicTrainingEffect, moderateIntensityMinutes, vigorousIntensityMinutes } = activity
-  const hasSignal =
-    durationMin != null ||
-    distanceKm != null ||
-    trainingLoad != null ||
-    aerobicTrainingEffect != null ||
-    anaerobicTrainingEffect != null ||
-    moderateIntensityMinutes != null ||
-    vigorousIntensityMinutes != null
-
-  if (!hasSignal) {
-    return null
-  }
-
-  const veryLightSession = (durationMin ?? 0) <= 35 && (trainingLoad ?? 0) < 80 && (vigorousIntensityMinutes ?? 0) < 20 && (anaerobicTrainingEffect ?? 0) < 1
-  if (veryLightSession) {
-    return 2
-  }
-
-  const longEnduranceSession = (durationMin ?? 0) >= 150 || (distanceKm ?? 0) >= 70
-  if (longEnduranceSession) {
-    return 36
-  }
-
-  const shortButDemandingSession =
-    (durationMin ?? 0) <= 90 &&
-    ((trainingLoad ?? 0) >= 80 || (vigorousIntensityMinutes ?? 0) >= 20 || (anaerobicTrainingEffect ?? 0) >= 2 || (aerobicTrainingEffect ?? 0) >= 3)
-  if (shortButDemandingSession) {
-    return 12
-  }
-
-  const mediumLongDemandingSession =
-    (durationMin ?? 0) > 90 &&
-    ((trainingLoad ?? 0) >= 150 || (vigorousIntensityMinutes ?? 0) >= 40 || (anaerobicTrainingEffect ?? 0) >= 2 || (aerobicTrainingEffect ?? 0) >= 3.5)
-  if (mediumLongDemandingSession) {
-    return 24
-  }
-
-  return 6
 }
 
 function enrichMetric(metric: DailyMetricInput): EnrichedMetric {
@@ -858,6 +834,156 @@ function sumRangeByWeeks<T>(items: T[], getValue: (item: T) => number | null | u
   return total == null ? null : Number(total)
 }
 
+function normalizeTrainingGoalText(trainingGoal?: string | null) {
+  const normalized = String(trainingGoal ?? "").trim()
+  return normalized.length > 0 ? normalized : null
+}
+
+function extractGoalKeywords(goal: string | null) {
+  if (!goal) {
+    return []
+  }
+
+  return goal
+    .split(/[\s,，、/]+/)
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .slice(0, 8)
+}
+
+function categorizeTrainingGoal(goal: string | null): GoalCategory {
+  if (!goal) {
+    return "general"
+  }
+
+  const normalized = goal.toLowerCase()
+  if (/(ftp|阈值|sweet spot|甜点|功能阈值|提速|提功率|interval|间歇)/.test(normalized)) {
+    return "ftp"
+  }
+  if (/(爬坡|爬升|山地|hill|climb)/.test(normalized)) {
+    return "climbing"
+  }
+  if (/(恢复|康复|休整|轻松周|recovery)/.test(normalized)) {
+    return "recovery"
+  }
+  if (/(减脂|减重|体重|燃脂|weight)/.test(normalized)) {
+    return "weightLoss"
+  }
+  if (/(耐力|有氧|完赛|长距离|200km|200 km|骑行量|基础|endurance)/.test(normalized)) {
+    return "endurance"
+  }
+  return "general"
+}
+
+function getComparableWeekDayActivities(activities: EnrichedActivity[], referenceDate: Date, lookbackWeeks = 6) {
+  return Array.from({ length: lookbackWeeks }, (_, index) => {
+    const day = addShanghaiDays(referenceDate, -(index + 1) * 7)
+    return getRangeItems(activities, day, day)
+  })
+}
+
+function classifyWeeklyHabitPattern(weekElapsedDays: number, completionRatio: number | null): WeeklyHabitPattern {
+  if (completionRatio == null) {
+    return "数据不足"
+  }
+  if (weekElapsedDays >= 6) {
+    return "分布均衡"
+  }
+  if (completionRatio <= 0.38) {
+    return "周末集中"
+  }
+  if (completionRatio >= 0.62) {
+    return "周中集中"
+  }
+  return "分布均衡"
+}
+
+function buildWeeklyHabitProfile(options: {
+  activities: EnrichedActivity[]
+  referenceDate: Date
+  weekElapsedDays: number
+  currentDurationMin: number | null
+  currentDistanceKm: number | null
+  loadFocus: WeeklyLoadFocus
+}) {
+  const { activities, referenceDate, weekElapsedDays, currentDurationMin, currentDistanceKm, loadFocus } = options
+  const comparableWeekStarts = getRecentComparableWeekStarts(referenceDate, 4)
+  const weeklyRanges = comparableWeekStarts.map((weekStart) => {
+    const weekEnd = addShanghaiDays(weekStart, 6)
+    const progressEnd = addShanghaiDays(weekStart, weekElapsedDays - 1)
+    const fullWeekItems = getRangeItems(activities, weekStart, weekEnd)
+    const progressItems = getRangeItems(activities, weekStart, progressEnd)
+    const fullWeekDurationMin = sumRangeByWeeks(fullWeekItems, (activity) => activity.durationMin) ?? (fullWeekItems.length > 0 ? 0 : null)
+    const progressDurationMin = sumRangeByWeeks(progressItems, (activity) => activity.durationMin) ?? 0
+    const fullWeekDistanceKm = sumRangeByWeeks(fullWeekItems, (activity) => activity.distanceKm) ?? (fullWeekItems.length > 0 ? 0 : null)
+    const progressDistanceKm = sumRangeByWeeks(progressItems, (activity) => activity.distanceKm) ?? 0
+    const fullWeekLoad = loadFocus === "distance" ? fullWeekDistanceKm : fullWeekDurationMin
+    const progressLoad = loadFocus === "distance" ? progressDistanceKm : progressDurationMin
+    return {
+      fullWeekLoad,
+      progressLoad,
+    }
+  })
+
+  const completionRatios = weeklyRanges
+    .map(({ progressLoad, fullWeekLoad }) => (progressLoad != null && fullWeekLoad != null && fullWeekLoad > 0 ? progressLoad / fullWeekLoad : null))
+    .filter((value): value is number => typeof value === "number" && Number.isFinite(value))
+  const recent4WeekCompletionRatio = round(average(completionRatios), 2)
+  const recent4WeekLoadAverage = round(
+    average(
+      weeklyRanges
+        .map(({ fullWeekLoad }) => fullWeekLoad)
+        .filter((value): value is number => typeof value === "number" && Number.isFinite(value))
+    ),
+    1
+  )
+  const habitExpectedToDate =
+    recent4WeekLoadAverage != null && recent4WeekCompletionRatio != null ? recent4WeekLoadAverage * recent4WeekCompletionRatio : null
+  const currentLoad = (loadFocus === "distance" ? currentDistanceKm : currentDurationMin) ?? 0
+
+  const sameWeekdayHistory = getComparableWeekDayActivities(activities, referenceDate, 6).map((dayActivities) => ({
+    sessions: dayActivities.length,
+    durationMin: sumRangeByWeeks(dayActivities, (activity) => activity.durationMin),
+    distanceKm: sumRangeByWeeks(dayActivities, (activity) => activity.distanceKm),
+  }))
+  const sameWeekdaySessionRate = round(
+    average(
+      sameWeekdayHistory.map((day) => {
+        if (day.sessions > 0) {
+          return 1
+        }
+        return 0
+      })
+    ),
+    2
+  )
+  const sameWeekdayAverageDurationMin = round(
+    average(
+      sameWeekdayHistory
+        .map((day) => day.durationMin)
+        .filter((value): value is number => typeof value === "number" && value > 0)
+    ),
+    0
+  )
+  const sameWeekdayAverageDistanceKm = round(
+    average(
+      sameWeekdayHistory
+        .map((day) => day.distanceKm)
+        .filter((value): value is number => typeof value === "number" && value > 0)
+    ),
+    1
+  )
+
+  return {
+    pattern: classifyWeeklyHabitPattern(weekElapsedDays, recent4WeekCompletionRatio),
+    recent4WeekCompletionRatio,
+    currentVsHabitRatio: ratio(currentLoad, habitExpectedToDate, 2),
+    sameWeekdaySessionRate,
+    sameWeekdayAverageDurationMin,
+    sameWeekdayAverageDistanceKm,
+  }
+}
+
 function buildSameProgressComparison<T extends { date: Date }>(options: {
   currentItems: T[]
   allItems: T[]
@@ -1016,6 +1142,14 @@ function buildWeeklyAssessment(options: {
   })
 
   const loadFocus = getWeeklyLoadFocus(weekActivities.length > 0 ? weekActivities : monthActivities)
+  const habitProfile = buildWeeklyHabitProfile({
+    activities,
+    referenceDate,
+    weekElapsedDays,
+    currentDurationMin: weekDurationMin,
+    currentDistanceKm: weekDistanceKm,
+    loadFocus,
+  })
   const durationComparison = buildWeeklyProgressComparison({
     actual: weekDurationMin,
     monthTotal: monthDurationMin,
@@ -1066,14 +1200,16 @@ function buildWeeklyAssessment(options: {
             duration: durationComparison.sameProgressRatio,
             distance: distanceComparison.sameProgressRatio,
             sessions: sessionsComparison.sameProgressRatio,
+            habit: habitProfile.currentVsHabitRatio,
           }
         : {
             duration: durationComparison.sameProgressRatio,
             sessions: sessionsComparison.sameProgressRatio,
+            habit: habitProfile.currentVsHabitRatio,
           },
       loadFocus === "distance"
-        ? { duration: 0.45, distance: 0.35, sessions: 0.2 }
-        : { duration: 0.7, sessions: 0.3 }
+        ? { duration: 0.35, distance: 0.25, sessions: 0.15, habit: 0.25 }
+        : { duration: 0.55, sessions: 0.2, habit: 0.25 }
     ),
     2
   )
@@ -1180,6 +1316,7 @@ function buildWeeklyAssessment(options: {
     monthStart: toDateKey(monthStart),
     weekElapsedDays,
     monthElapsedDays,
+    habit: habitProfile,
     load: {
       focus: loadFocus,
       totals: {
@@ -1314,9 +1451,98 @@ function fallbackAnalysis(context: TrainingContext): TrainingAnalysisResult {
   }
 }
 
-export function buildTrainingContext(metrics: DailyMetricInput[], activities: ActivityInput[]): TrainingContext {
+function buildWorkoutSuggestion(options: {
+  shouldTrain: DecisionStatus
+  goal: TrainingContext["goal"]
+  fatigueTotalScore: number | null
+  weeklyAssessment: TrainingContext["weeklyAssessment"]
+  latestRecoveryHours: number | null
+}) {
+  const { shouldTrain, goal, fatigueTotalScore, weeklyAssessment, latestRecoveryHours } = options
+  const habit = weeklyAssessment.habit
+  const baseDurationMin = Math.max(30, Math.round(habit.sameWeekdayAverageDurationMin ?? (goal.category === "endurance" ? 90 : 60)))
+
+  if (shouldTrain === "不训") {
+    return {
+      label: "休息恢复",
+      intensity: "休息 / 仅做恢复活动",
+      durationMin: { min: 0, max: 30 },
+      summary: "今天不安排正式训练，如想活动，只做 20-30 分钟步行、拉伸或轻松活动。",
+    } satisfies WorkoutSuggestion
+  }
+
+  if (shouldTrain === "慎训") {
+    const min = Math.max(20, Math.round(baseDurationMin * 0.5))
+    const max = Math.max(min + 10, Math.min(75, Math.round(baseDurationMin * 0.75)))
+    return {
+      label: "恢复骑",
+      intensity: "Z1-Z2 恢复强度",
+      durationMin: { min, max },
+      summary: `建议做 ${min}-${max} 分钟 Z1-Z2 恢复骑或轻松有氧，避免阈值以上强度。`,
+    } satisfies WorkoutSuggestion
+  }
+
+  const lowHabitDay = (habit.sameWeekdaySessionRate ?? 0) < 0.35 && (habit.sameWeekdayAverageDurationMin ?? 0) < 45
+  const weeklyUnderloaded = weeklyAssessment.overall.conclusion === "训练不足"
+  const weeklyOverloaded = weeklyAssessment.overall.conclusion === "训练偏多" || weeklyAssessment.overall.conclusion === "过度风险"
+  const readyForQuality =
+    (fatigueTotalScore ?? 0) >= 80 &&
+    !weeklyOverloaded &&
+    (latestRecoveryHours == null || latestRecoveryHours < 24) &&
+    (goal.category === "ftp" || goal.category === "climbing")
+
+  if (readyForQuality) {
+    const min = Math.max(45, Math.round(baseDurationMin * (weeklyUnderloaded ? 1 : 0.85)))
+    const max = Math.max(min + 15, Math.min(110, min + 25))
+    return {
+      label: goal.category === "climbing" ? "爬坡质量骑" : "阈值质量骑",
+      intensity: goal.category === "climbing" ? "节奏 / 爬坡强度" : "甜点 / 阈值附近",
+      durationMin: { min, max },
+      summary: `建议做 ${min}-${max} 分钟${goal.category === "climbing" ? "节奏到爬坡强度" : "甜点到阈值附近"}训练，热身后安排 1 组主训练，收尾保持轻松。`,
+    } satisfies WorkoutSuggestion
+  }
+
+  if (weeklyOverloaded || goal.category === "recovery") {
+    const min = Math.max(25, Math.round(baseDurationMin * 0.55))
+    const max = Math.max(min + 10, Math.min(75, Math.round(baseDurationMin * 0.8)))
+    return {
+      label: "轻松耐力骑",
+      intensity: "Z1-Z2 低强度",
+      durationMin: { min, max },
+      summary: `建议做 ${min}-${max} 分钟 Z1-Z2 轻松耐力骑，今天重点是保恢复，不再追加高强度刺激。`,
+    } satisfies WorkoutSuggestion
+  }
+
+  if (lowHabitDay) {
+    const min = Math.max(30, Math.round(baseDurationMin * 0.8))
+    const max = Math.max(min + 10, Math.min(70, min + 20))
+    return {
+      label: "灵活耐力骑",
+      intensity: goal.category === "weightLoss" ? "Z2 稳定燃脂强度" : "Z2 有氧耐力",
+      durationMin: { min, max },
+      summary: `按你以往周内习惯，今天不必硬堆量；如果安排训练，做 ${min}-${max} 分钟 ${goal.category === "weightLoss" ? "Z2 稳定燃脂" : "Z2 有氧耐力"}即可。`,
+    } satisfies WorkoutSuggestion
+  }
+
+  const min = Math.max(40, Math.round(baseDurationMin * (weeklyUnderloaded ? 1 : 0.85)))
+  const max = Math.max(min + 15, Math.min(goal.category === "endurance" ? 140 : 100, Math.round(baseDurationMin * (weeklyUnderloaded ? 1.35 : 1.1))))
+  return {
+    label: goal.category === "weightLoss" ? "燃脂耐力骑" : "耐力骑",
+    intensity: goal.category === "weightLoss" ? "Z2 稳定燃脂强度" : "Z2 有氧耐力",
+    durationMin: { min, max },
+    summary: `建议做 ${min}-${max} 分钟 ${goal.category === "weightLoss" ? "Z2 稳定燃脂" : "Z2 有氧耐力"}训练，整体保持可持续输出。`,
+  } satisfies WorkoutSuggestion
+}
+
+export function buildTrainingContext(metrics: DailyMetricInput[], activities: ActivityInput[], trainingGoal?: string | null): TrainingContext {
   const sortedMetrics = [...metrics].sort((a, b) => a.date.getTime() - b.date.getTime()).map(enrichMetric)
   const sortedActivities = [...activities].sort((a, b) => a.date.getTime() - b.date.getTime()).map(enrichActivity)
+  const normalizedTrainingGoal = normalizeTrainingGoalText(trainingGoal)
+  const goal = {
+    raw: normalizedTrainingGoal,
+    category: categorizeTrainingGoal(normalizedTrainingGoal),
+    keywords: extractGoalKeywords(normalizedTrainingGoal),
+  } satisfies TrainingContext["goal"]
   const latestMetric = [...sortedMetrics].reverse().find(isMetricUsableForAnalysis) ?? null
   const latestActivity = sortedActivities[sortedActivities.length - 1] ?? null
   const skippedRecentMetricDates = latestMetric
@@ -1326,6 +1552,7 @@ export function buildTrainingContext(metrics: DailyMetricInput[], activities: Ac
   if (!latestMetric) {
     return {
       generatedAt: new Date().toISOString(),
+      goal,
       dateRange: {
         metricStart: null,
         metricEnd: null,
@@ -1408,6 +1635,14 @@ export function buildTrainingContext(metrics: DailyMetricInput[], activities: Ac
         monthStart: null,
         weekElapsedDays: 0,
         monthElapsedDays: 0,
+        habit: {
+          pattern: "数据不足",
+          recent4WeekCompletionRatio: null,
+          currentVsHabitRatio: null,
+          sameWeekdaySessionRate: null,
+          sameWeekdayAverageDurationMin: null,
+          sameWeekdayAverageDistanceKm: null,
+        },
         load: {
           focus: "duration",
           totals: { sessions: 0, durationMin: null, distanceKm: null },
@@ -1439,6 +1674,7 @@ export function buildTrainingContext(metrics: DailyMetricInput[], activities: Ac
         shouldTrain: "慎训",
         todayAdvice: "关键恢复数据不足，建议先做低强度活动。",
         ruleReason: "当前缺少可用于判断训练状态的核心数据，先按保守策略处理。",
+        workoutSuggestion: null,
       },
       missingData: ["还没有可用于分析的 Garmin 日级数据"],
     }
@@ -1559,7 +1795,7 @@ export function buildTrainingContext(metrics: DailyMetricInput[], activities: Ac
 
   const severeAbnormal = Object.values(abnormalities).some((item) => item.level === "severe")
   let shouldTrain: DecisionStatus = "可训"
-  let todayAdvice = "按原定强度正常训练。"
+  let todayAdvice = "建议按既定计划完成训练。"
   let ruleReason = "核心恢复指标整体稳定，当前状态满足常规训练条件。"
 
   if (severeAbnormal || (fatigueTotalScore != null && fatigueTotalScore < 40)) {
@@ -1601,20 +1837,32 @@ export function buildTrainingContext(metrics: DailyMetricInput[], activities: Ac
     }
   }
 
+  const habitualLowLoadDay =
+    (weeklyAssessment.habit.sameWeekdaySessionRate ?? 0) < 0.35 && (weeklyAssessment.habit.sameWeekdayAverageDurationMin ?? 0) < 45
   const firmPushScenario =
     shouldTrain === "可训" &&
     consecutiveRestDays >= 2 &&
     (fatigueTotalScore == null || fatigueTotalScore >= 60) &&
     (loadRatio == null || loadRatio >= 0.5) &&
-    (latestRecoveryHours == null || latestRecoveryHours < 24)
+    (latestRecoveryHours == null || latestRecoveryHours < 24) &&
+    !habitualLowLoadDay
+
+  const workoutSuggestion = buildWorkoutSuggestion({
+    shouldTrain,
+    goal,
+    fatigueTotalScore,
+    weeklyAssessment,
+    latestRecoveryHours,
+  })
+  todayAdvice = workoutSuggestion.summary
 
   let toneHint: ToneHint = "supportive"
   if (firmPushScenario) {
     toneHint = "firm"
     todayAdvice =
       consecutiveRestDays >= 4
-        ? `你已经连续休息 ${consecutiveRestDays} 天，今天别再拖，必须恢复正常训练节奏。`
-        : `你已经连续休息 ${consecutiveRestDays} 天，今天别再找理由，按计划完成训练。`
+        ? `你已经连续休息 ${consecutiveRestDays} 天，今天别再拖，按计划完成 ${workoutSuggestion.summary.replace(/^建议做\s*/, "")}`
+        : `你已经连续休息 ${consecutiveRestDays} 天，今天别再找理由，直接完成 ${workoutSuggestion.summary.replace(/^建议做\s*/, "")}`
     ruleReason =
       consecutiveRestDays >= 4
         ? `身体状态允许训练，但你已经连续 ${consecutiveRestDays} 天没有完成训练，当前更需要重启执行而不是继续休息。`
@@ -1658,6 +1906,7 @@ export function buildTrainingContext(metrics: DailyMetricInput[], activities: Ac
 
   return {
     generatedAt: new Date().toISOString(),
+    goal,
     dateRange: {
       metricStart: sortedMetrics[0] ? toDateKey(sortedMetrics[0].date) : null,
       metricEnd: toDateKey(latestMetric.date),
@@ -1740,6 +1989,7 @@ export function buildTrainingContext(metrics: DailyMetricInput[], activities: Ac
       shouldTrain,
       todayAdvice,
       ruleReason,
+      workoutSuggestion,
     },
     missingData,
   }

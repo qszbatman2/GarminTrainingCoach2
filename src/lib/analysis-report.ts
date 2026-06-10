@@ -14,7 +14,7 @@ import {
 } from "@/lib/training-analysis"
 
 const REPORT_TYPE = "latest"
-const ANALYSIS_VERSION = "training-rule-v16-prompt-format-bold-lines"
+const ANALYSIS_VERSION = "training-rule-v17-habit-aware-weekly-load"
 
 function normalizeJson<T>(value: unknown) {
   return JSON.parse(JSON.stringify(value)) as T
@@ -60,7 +60,7 @@ export function computeAnalysisInputHash(metrics: DailyMetricInput[], activities
 }
 
 async function generateAnalysisPayload(metrics: DailyMetricInput[], activities: ActivityInput[], trainingGoal?: string | null) {
-  const context = buildTrainingContext(metrics, activities)
+  const context = buildTrainingContext(metrics, activities, trainingGoal)
   const content = await createArkJsonCompletion(
     buildTrainingAnalysisMessages({
       context,
