@@ -49,3 +49,29 @@ export function estimateRecoveryHours(activity: RecoveryEstimationInput) {
 
   return 6
 }
+
+export type RecoveryActivityInput = {
+  duration: number | null
+  distance: number | null
+  trainingLoad: number | null
+  aerobicTrainingEffect: number | null
+  anaerobicTrainingEffect: number | null
+  moderateIntensityMinutes: number | null
+  vigorousIntensityMinutes: number | null
+}
+
+export function getEstimatedRecoveryHoursFromActivity(activity: RecoveryActivityInput | null | undefined) {
+  if (!activity) {
+    return null
+  }
+
+  return estimateRecoveryHours({
+    durationMin: activity.duration != null ? Number((activity.duration / 60).toFixed(0)) : null,
+    distanceKm: activity.distance != null ? Number((activity.distance / 1000).toFixed(1)) : null,
+    trainingLoad: activity.trainingLoad,
+    aerobicTrainingEffect: activity.aerobicTrainingEffect,
+    anaerobicTrainingEffect: activity.anaerobicTrainingEffect,
+    moderateIntensityMinutes: activity.moderateIntensityMinutes,
+    vigorousIntensityMinutes: activity.vigorousIntensityMinutes,
+  })
+}

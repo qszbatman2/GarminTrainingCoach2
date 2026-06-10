@@ -12,6 +12,7 @@ import {
   type FieldMetricRecord,
 } from "@/lib/data-field-catalog"
 import { getActivityDisplayValues, getBodyBatterySeries, getHeartRateSeries, getMetricDisplayValues, getStressSeries, type NumericPoint } from "@/lib/garmin-data"
+import { getEstimatedRecoveryHoursFromActivity } from "@/lib/recovery-estimation"
 import { formatShanghaiDateTime, parseGarminDateTime } from "@/lib/shanghai-time"
 import type { TrainingAnalysisPayload } from "@/lib/training-analysis"
 
@@ -148,14 +149,6 @@ function toMinutes(value: number | null | undefined) {
   }
 
   return Number(((value > 240 ? value / 60 : value)).toFixed(0))
-}
-
-function toHours(value: number | null | undefined) {
-  if (value == null || !Number.isFinite(value)) {
-    return null
-  }
-
-  return Number(((value > 240 ? value / 3600 : value)).toFixed(1))
 }
 
 function average(values: Array<number | null | undefined>) {
@@ -835,6 +828,15 @@ export function DataExplorer({ metricTotal, metrics, activityTotal, activities, 
     }
 
     const values = getActivityDisplayValues(latestActivity.raw)
+    const estimatedRecoveryHours = getEstimatedRecoveryHoursFromActivity({
+      duration: latestActivity.duration,
+      distance: latestActivity.distance,
+      trainingLoad: values.trainingLoad,
+      aerobicTrainingEffect: values.aerobicTrainingEffect,
+      anaerobicTrainingEffect: values.anaerobicTrainingEffect,
+      moderateIntensityMinutes: values.moderateIntensityMinutes,
+      vigorousIntensityMinutes: values.vigorousIntensityMinutes,
+    })
     const startedAt = parseActivityDateTime(values.startedAtGmt, values.startedAtLocal)
     const endedAt =
       parseActivityDateTime(values.endedAtGmt, values.endedAtLocal) ??
@@ -848,7 +850,7 @@ export function DataExplorer({ metricTotal, metrics, activityTotal, activities, 
       typeLabel: formatActivityType(latestActivity.type),
       durationLabel: formatDuration(latestActivity.duration),
       distanceLabel: formatDistance(latestActivity.distance),
-      recoveryLabel: formatNumber(toHours(values.recoveryHours), 1, " h"),
+      recoveryLabel: formatNumber(estimatedRecoveryHours, 1, " h"),
     }
   }, [latestActivities])
 
@@ -1124,7 +1126,7 @@ export function DataExplorer({ metricTotal, metrics, activityTotal, activities, 
               <MetricTile className={getLatestMetricTileClass(formatNumber(latestActivitySummary.averagePower, 0, " W"))} detail="有功率计时优先显示" label="AP" value={formatNumber(latestActivitySummary.averagePower, 0, " W")} />
               <MetricTile className={getLatestMetricTileClass(formatNumber(latestActivitySummary.normalizedPower, 0, " W"))} detail="有功率计时优先显示" label="NP" value={formatNumber(latestActivitySummary.normalizedPower, 0, " W")} />
               <MetricTile className={getLatestMetricTileClass(formatNumber(latestActivitySummary.averageCadence, 0, " rpm"))} detail="骑行踏频 / 跑步步频" label="平均踏频" value={formatNumber(latestActivitySummary.averageCadence, 0, " rpm")} />
-              <MetricTile className={getLatestMetricTileClass(latestActivitySummary.recoveryLabel)} detail="Garmin 最近一次训练建议" label="恢复时间" value={latestActivitySummary.recoveryLabel} />
+              <MetricTile className={getLatestMetricTileClass(latestActivitySummary.recoveryLabel)} detail="基于训练负荷与强度的自建估算" label="恢复时间" value={latestActivitySummary.recoveryLabel} />
               <MetricTile className={getLatestMetricTileClass(formatNumber(latestActivitySummary.trainingLoad))} detail="训练刺激量级" label="Training Load" value={formatNumber(latestActivitySummary.trainingLoad)} />
               <MetricTile className={getLatestMetricTileClass(`${formatNumber(latestActivitySummary.aerobicTrainingEffect, 1)} / ${formatNumber(latestActivitySummary.anaerobicTrainingEffect, 1)}`)} detail="有氧 / 无氧" label="训练效果" value={`${formatNumber(latestActivitySummary.aerobicTrainingEffect, 1)} / ${formatNumber(latestActivitySummary.anaerobicTrainingEffect, 1)}`} />
             </div>
