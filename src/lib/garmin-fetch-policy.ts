@@ -16,17 +16,19 @@ function parsePositiveInt(value: string | undefined, fallback: number) {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback
 }
 
-export function getGarminFetchPolicy(mode: GarminSyncMode, env: GarminFetchEnv = process.env): GarminFetchPolicy {
+export function getGarminFetchPolicy(mode: GarminSyncMode, env?: GarminFetchEnv): GarminFetchPolicy {
+  const effectiveEnv = env ?? process.env
+
   if (mode === "partial_today") {
     return {
-      timeoutMs: parsePositiveInt(env.GARMIN_PARTIAL_FETCH_TIMEOUT_MS, 45_000),
+      timeoutMs: parsePositiveInt(effectiveEnv.GARMIN_PARTIAL_FETCH_TIMEOUT_MS, 45_000),
       retryCount: 0,
     }
   }
 
   return {
-    timeoutMs: parsePositiveInt(env.GARMIN_FETCH_TIMEOUT_MS, 120_000),
-    retryCount: parsePositiveInt(env.GARMIN_FETCH_RETRY_COUNT, 1),
+    timeoutMs: parsePositiveInt(effectiveEnv.GARMIN_FETCH_TIMEOUT_MS, 120_000),
+    retryCount: parsePositiveInt(effectiveEnv.GARMIN_FETCH_RETRY_COUNT, 1),
   }
 }
 

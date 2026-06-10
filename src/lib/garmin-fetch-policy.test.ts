@@ -31,6 +31,33 @@ test("env overrides are respected when provided", () => {
   )
 })
 
+test("defaults to process env when env is omitted", () => {
+  const originalTimeout = process.env.GARMIN_FETCH_TIMEOUT_MS
+  const originalRetry = process.env.GARMIN_FETCH_RETRY_COUNT
+
+  process.env.GARMIN_FETCH_TIMEOUT_MS = "180000"
+  process.env.GARMIN_FETCH_RETRY_COUNT = "3"
+
+  try {
+    assert.deepEqual(getGarminFetchPolicy("full"), {
+      timeoutMs: 180_000,
+      retryCount: 3,
+    })
+  } finally {
+    if (originalTimeout == null) {
+      delete process.env.GARMIN_FETCH_TIMEOUT_MS
+    } else {
+      process.env.GARMIN_FETCH_TIMEOUT_MS = originalTimeout
+    }
+
+    if (originalRetry == null) {
+      delete process.env.GARMIN_FETCH_RETRY_COUNT
+    } else {
+      process.env.GARMIN_FETCH_RETRY_COUNT = originalRetry
+    }
+  }
+})
+
 test("only timeout-like failures are retried within retry budget", () => {
   const abortError = new Error("aborted")
   abortError.name = "AbortError"
