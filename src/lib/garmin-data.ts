@@ -140,6 +140,28 @@ export type ActivityIntensityResult = {
   source: "detail_power" | "detail_heart_rate" | "summary_fallback" | "missing"
 }
 
+function getZoneLowerBoundary(paths: string[], source: unknown, zoneNumber: number) {
+  for (const path of paths) {
+    const values = getValuesByPath(source, path)
+    for (const value of values) {
+      if (!Array.isArray(value)) {
+        continue
+      }
+
+      for (const zone of value) {
+        const record = asRecord(zone)
+        const currentZoneNumber = typeof record?.zoneNumber === "number" ? record.zoneNumber : null
+        const zoneLowBoundary = typeof record?.zoneLowBoundary === "number" ? record.zoneLowBoundary : null
+        if (currentZoneNumber === zoneNumber && zoneLowBoundary != null && Number.isFinite(zoneLowBoundary)) {
+          return zoneLowBoundary
+        }
+      }
+    }
+  }
+
+  return null
+}
+
 function normalizeDescriptorMetricValue(rawValue: unknown, factor: number | undefined) {
   if (typeof rawValue !== "number" || !Number.isFinite(rawValue)) {
     return null
@@ -196,6 +218,9 @@ export function computeActivityIntensityFromDetails(
     averagePower?: number | null
     normalizedPower?: number | null
     lactateThresholdHr?: number | null
+    functionalThresholdPower?: number | null
+    vigorousHeartRateThreshold?: number | null
+    vigorousPowerThreshold?: number | null
   }
 ): ActivityIntensityResult {
   const series = getActivityDetailSeries(raw)
@@ -212,6 +237,9 @@ export function computeActivityIntensityFromDetails(
   const averagePower = options?.averagePower ?? null
   const normalizedPower = options?.normalizedPower ?? null
   const lactateThresholdHr = options?.lactateThresholdHr ?? null
+  const functionalThresholdPower = options?.functionalThresholdPower ?? null
+  const explicitVigorousHeartRateThreshold = options?.vigorousHeartRateThreshold ?? null
+  const explicitVigorousPowerThreshold = options?.vigorousPowerThreshold ?? null
 
   const moderateHeartRateThreshold =
     lactateThresholdHr != null
@@ -224,7 +252,9 @@ export function computeActivityIntensityFromDetails(
             ? maxHeartRate * 0.78
             : null
   const vigorousHeartRateThreshold =
-    lactateThresholdHr != null
+    explicitVigorousHeartRateThreshold != null
+      ? explicitVigorousHeartRateThreshold
+      : lactateThresholdHr != null
       ? lactateThresholdHr * 0.95
       : averageHeartRate != null && maxHeartRate != null
         ? Math.max(averageHeartRate * 1.08, maxHeartRate * 0.88)
@@ -237,7 +267,15 @@ export function computeActivityIntensityFromDetails(
   const moderatePowerThreshold =
     normalizedPower != null ? normalizedPower * 0.78 : averagePower != null ? averagePower * 1.1 : null
   const vigorousPowerThreshold =
-    normalizedPower != null ? normalizedPower * 0.92 : averagePower != null ? averagePower * 1.28 : null
+    explicitVigorousPowerThreshold != null
+      ? explicitVigorousPowerThreshold
+      : functionalThresholdPower != null
+        ? functionalThresholdPower * 0.76
+        : normalizedPower != null
+          ? normalizedPower * 0.92
+          : averagePower != null
+            ? averagePower * 1.28
+            : null
 
   let moderateSeconds = 0
   let vigorousSeconds = 0
@@ -768,6 +806,16 @@ export function getActivityDisplayValues(raw: unknown) {
     ],
     raw
   )
+  const functionalThresholdPower = firstNumber(
+    [
+      "summaryDTO.functionalThresholdPower",
+      "summary.functionalThresholdPower",
+      "details.functionalThresholdPower",
+      "functionalThresholdPower",
+      "ftp",
+    ],
+    raw
+  )
   const lactateThresholdHr = firstNumber(
     [
       "user_profile.userData.lactateThresholdHeartRate",
@@ -781,6 +829,8 @@ export function getActivityDisplayValues(raw: unknown) {
     ],
     raw
   )
+  const vigorousHeartRateThreshold = getZoneLowerBoundary(["hr_in_timezones", "timeInHeartRateZones"], raw, 3)
+  const vigorousPowerThreshold = getZoneLowerBoundary(["power_in_timezones", "powerTimeInZones", "timeInPowerZones"], raw, 3)
   const summaryModerateIntensityMinutes = firstNumber(
     [
       "summaryDTO.moderateIntensityMinutes",
@@ -803,6 +853,9 @@ export function getActivityDisplayValues(raw: unknown) {
     averagePower,
     normalizedPower,
     lactateThresholdHr,
+    functionalThresholdPower,
+    vigorousHeartRateThreshold,
+    vigorousPowerThreshold,
   })
 
   return {
