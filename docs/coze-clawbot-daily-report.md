@@ -7,7 +7,7 @@
 生产接口：
 
 ```text
-GET https://你的域名/api/coze/daily-report
+GET https://garmin-training-coach2.vercel.app/api/coze/daily-report
 ```
 
 鉴权方式二选一：
@@ -19,10 +19,22 @@ Authorization: Bearer <COZE_REPORT_TOKEN>
 或：
 
 ```text
-https://你的域名/api/coze/daily-report?token=<COZE_REPORT_TOKEN>
+https://garmin-training-coach2.vercel.app/api/coze/daily-report?token=<COZE_REPORT_TOKEN>
 ```
 
 建议使用 Header，不要把 token 暴露在日志和截图里。
+
+当前固定配置：
+
+```text
+APP_BASE_URL=https://garmin-training-coach2.vercel.app
+COZE_REPORT_USER_EMAIL=qszbatman2@gmail.com
+```
+
+安全说明：
+
+- `COZE_REPORT_TOKEN` 和 `CRON_SECRET` 是密钥，只配置到 Vercel/Coze，不写入 GitHub 文档。
+- 如果密钥已经被截图、转发或公开，需要重新生成并替换。
 
 接口返回字段：
 
@@ -30,7 +42,7 @@ https://你的域名/api/coze/daily-report?token=<COZE_REPORT_TOKEN>
 {
   "ok": true,
   "source": "garmin-ai-coach",
-  "userEmail": "your@email.com",
+  "userEmail": "qszbatman2@gmail.com",
   "date": "2026-06-11",
   "generatedAt": "2026-06-11T06:30:00.000Z",
   "updatedAt": "2026-06-11T06:30:00.000Z",
@@ -59,9 +71,9 @@ https://你的域名/api/coze/daily-report?token=<COZE_REPORT_TOKEN>
 在 Vercel 或部署平台配置：
 
 ```text
-COZE_REPORT_TOKEN=生成一个长随机字符串
-COZE_REPORT_USER_EMAIL=你的登录邮箱
-CRON_SECRET=已有定时任务密钥
+COZE_REPORT_TOKEN=<在 Vercel 中填写真实密钥>
+COZE_REPORT_USER_EMAIL=qszbatman2@gmail.com
+CRON_SECRET=<在 Vercel 中填写真实密钥>
 ```
 
 说明：
@@ -115,7 +127,7 @@ CRON_SECRET=已有定时任务密钥
 
 ```text
 方法：GET
-URL：https://你的域名/api/coze/daily-report
+URL：https://garmin-training-coach2.vercel.app/api/coze/daily-report
 Headers:
   Authorization: Bearer <COZE_REPORT_TOKEN>
 ```
@@ -123,7 +135,7 @@ Headers:
 如果 Coze 当前 HTTP 节点不方便配置 Header，则使用：
 
 ```text
-https://你的域名/api/coze/daily-report?token=<COZE_REPORT_TOKEN>
+https://garmin-training-coach2.vercel.app/api/coze/daily-report?token=<COZE_REPORT_TOKEN>
 ```
 
 ### 节点 3：条件判断
@@ -194,7 +206,7 @@ JSON:
 你每天 08:00 Asia/Shanghai 自动执行一次。
 
 执行步骤：
-1. 调用 HTTP GET：https://你的域名/api/coze/daily-report
+1. 调用 HTTP GET：https://garmin-training-coach2.vercel.app/api/coze/daily-report
 2. 请求头添加 Authorization: Bearer <COZE_REPORT_TOKEN>
 3. 如果返回 JSON 的 ok 为 true，把 pushText 原样推送到我绑定的微信 ClawBot。
 4. 如果 pushText 为空，就使用 markdown 字段推送。
@@ -207,7 +219,7 @@ JSON:
 本地或线上验证：
 
 ```bash
-curl -H "Authorization: Bearer <COZE_REPORT_TOKEN>" https://你的域名/api/coze/daily-report
+curl -H "Authorization: Bearer <COZE_REPORT_TOKEN>" https://garmin-training-coach2.vercel.app/api/coze/daily-report
 ```
 
 期望：
@@ -222,5 +234,5 @@ curl -H "Authorization: Bearer <COZE_REPORT_TOKEN>" https://你的域名/api/coz
 强制刷新：
 
 ```bash
-curl -H "Authorization: Bearer <COZE_REPORT_TOKEN>" "https://你的域名/api/coze/daily-report?refresh=1"
+curl -H "Authorization: Bearer <COZE_REPORT_TOKEN>" "https://garmin-training-coach2.vercel.app/api/coze/daily-report?refresh=1"
 ```
