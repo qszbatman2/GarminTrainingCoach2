@@ -160,3 +160,84 @@ export async function getOrCreateLatestAnalysisReport(options: {
 
   return mapStoredReport(report)
 }
+
+export async function getAnalysisReportAutomationUser(userEmail?: string | null) {
+  const email = String(userEmail ?? "").trim()
+  const select = {
+    id: true,
+    email: true,
+    trainingGoal: true,
+    metrics: {
+      orderBy: { date: "asc" as const },
+      select: {
+        id: true,
+        date: true,
+        sleepScore: true,
+        hrv: true,
+        restingHr: true,
+        stress: true,
+        raw: true,
+      },
+    },
+    activities: {
+      orderBy: { date: "asc" as const },
+      select: {
+        id: true,
+        name: true,
+        type: true,
+        distance: true,
+        duration: true,
+        date: true,
+        raw: true,
+      },
+    },
+  }
+
+  if (email) {
+    return prisma.user.findUnique({
+      where: { email },
+      select,
+    })
+  }
+
+  return prisma.user.findFirst({
+    where: {
+      metrics: {
+        some: {},
+      },
+    },
+    orderBy: { updatedAt: "desc" },
+    select,
+  })
+}
+
+export async function getOrCreateAutomationAnalysisReport(options: {
+  userEmail?: string | null
+  forceRefresh?: boolean
+}) {
+  const user = await getAnalysisReportAutomationUser(options.userEmail)
+
+  if (!user) {
+    throw new Error("没有找到可生成日报的用户")
+  }
+
+  if (user.metrics.length === 0) {
+    throw new Error("还没有可分析的 Garmin 日级数据")
+  }
+
+  const report = await getOrCreateLatestAnalysisReport({
+    userId: user.id,
+    trainingGoal: user.trainingGoal,
+    metrics: user.metrics,
+    activities: user.activities,
+    forceRefresh: options.forceRefresh,
+  })
+
+  return {
+    user: {
+      id: user.id,
+      email: user.email,
+    },
+    report,
+  }
+}
