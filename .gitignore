@@ -28,6 +28,9 @@
 *.pem
 __pycache__/
 *.py[cod]
+/service/.tokens/
+/service/venv/
+/service/__pycache__/
 
 # debug
 npm-debug.log*
