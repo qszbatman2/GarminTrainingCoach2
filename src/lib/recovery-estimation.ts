@@ -8,6 +8,9 @@ export type RecoveryEstimationInput = {
   vigorousIntensityMinutes: number | null
 }
 
+const RECOVERY_MIN_HOURS = 2
+const RECOVERY_MAX_HOURS = 48
+
 export function estimateRecoveryHours(activity: RecoveryEstimationInput) {
   const { durationMin, distanceKm, trainingLoad, aerobicTrainingEffect, anaerobicTrainingEffect, moderateIntensityMinutes, vigorousIntensityMinutes } = activity
   const hasSignal =
@@ -23,31 +26,29 @@ export function estimateRecoveryHours(activity: RecoveryEstimationInput) {
     return null
   }
 
-  const veryLightSession = (durationMin ?? 0) <= 35 && (trainingLoad ?? 0) < 80 && (vigorousIntensityMinutes ?? 0) < 20 && (anaerobicTrainingEffect ?? 0) < 1
-  if (veryLightSession) {
-    return 2
-  }
+  // 连续公式：恢复时长 = 耐力主干 + 强度叠加 + 超长时长加成，再夹紧到 [2, 48]。
+  // 各因子单调贡献，避免此前 5 档跳变导致的"边界突变"。
 
-  const longEnduranceSession = (durationMin ?? 0) >= 150 || (distanceKm ?? 0) >= 70
-  if (longEnduranceSession) {
-    return 36
-  }
+  // 耐力主干：trainingLoad 是 Garmin 综合应激(EPOC)的最佳单一信号，优先使用；
+  // 缺失时退回时长/距离估算。
+  const enduranceHours =
+    trainingLoad != null
+      ? trainingLoad * 0.09
+      : Math.max((durationMin ?? 0) * 0.1, (distanceKm ?? 0) * 0.12)
 
-  const shortButDemandingSession =
-    (durationMin ?? 0) <= 90 &&
-    ((trainingLoad ?? 0) >= 80 || (vigorousIntensityMinutes ?? 0) >= 20 || (anaerobicTrainingEffect ?? 0) >= 2 || (aerobicTrainingEffect ?? 0) >= 3)
-  if (shortButDemandingSession) {
-    return 12
-  }
+  // 强度叠加：高强度分钟、无氧训练效果(平方放大)、高有氧训练效果。
+  const intensityHours =
+    (vigorousIntensityMinutes ?? 0) * 0.15 +
+    Math.pow(anaerobicTrainingEffect ?? 0, 2) * 1.0 +
+    Math.max(0, (aerobicTrainingEffect ?? 0) - 2) * 1.5
 
-  const mediumLongDemandingSession =
-    (durationMin ?? 0) > 90 &&
-    ((trainingLoad ?? 0) >= 150 || (vigorousIntensityMinutes ?? 0) >= 40 || (anaerobicTrainingEffect ?? 0) >= 2 || (aerobicTrainingEffect ?? 0) >= 3.5)
-  if (mediumLongDemandingSession) {
-    return 24
-  }
+  // 超长时长加成：超过 120 分钟后线性追加。
+  const durationBonus = Math.max(0, (durationMin ?? 0) - 120) * 0.06
 
-  return 6
+  const rawHours = enduranceHours + intensityHours + durationBonus
+  const clamped = Math.min(RECOVERY_MAX_HOURS, Math.max(RECOVERY_MIN_HOURS, rawHours))
+
+  return Number(clamped.toFixed(1))
 }
 
 export type RecoveryActivityInput = {
