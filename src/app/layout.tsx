@@ -1,8 +1,9 @@
-import type { Metadata } from "next"
+import type { Metadata, Viewport } from "next"
 import { Manrope, Sora } from "next/font/google"
 
 import { auth } from "@/auth"
 import { GlobalTopbar } from "@/components/global-topbar"
+import { MobileTabBar } from "@/components/mobile-tabbar"
 import prisma from "@/lib/prisma"
 
 import "./globals.css"
@@ -23,6 +24,13 @@ export const metadata: Metadata = {
     default: "GarminAICoach",
   },
   description: "Garmin training insights dashboard",
+}
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+  themeColor: "#07111f",
 }
 
 export default async function RootLayout({
@@ -57,6 +65,7 @@ export default async function RootLayout({
           }
         />
         {children}
+        <MobileTabBar />
       </body>
     </html>
   )
