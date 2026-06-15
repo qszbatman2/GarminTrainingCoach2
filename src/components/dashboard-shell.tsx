@@ -110,7 +110,7 @@ export function DashboardShell({
   return (
     <AppPage>
       <section className="space-y-4">
-        <div className="text-[11px] uppercase tracking-[0.28em] text-cyan-300/72">Training Dashboard</div>
+        <div className="text-[11px] uppercase tracking-[0.28em] text-cyan-300/72 max-sm:hidden">Training Dashboard</div>
         <div className="flex flex-wrap items-center gap-2">
           <h1 className="font-[family:var(--font-display)] text-3xl font-semibold tracking-tight text-white">{hasGarminBinding ? `${userName}，先看今天怎么练。` : `${userName}，先绑定 Garmin。`}</h1>
           {hasGarminBinding ? (
@@ -124,7 +124,7 @@ export function DashboardShell({
           )}
           {hasGarminBinding && savedTrainingGoal ? <AccentPill tone="violet">已设置训练目标</AccentPill> : null}
         </div>
-        <p className="max-w-2xl text-sm leading-7 text-slate-300">
+        <p className="max-w-2xl text-sm leading-7 text-slate-300 max-sm:hidden">
           {hasGarminBinding ? "首页只保留训练决策、恢复倒计时和目标设置，账号与导航统一收进顶部 Topbar。" : "先写训练目标，再完成 Garmin 绑定，后续首页只展示真正影响训练决策的内容。"}
         </p>
       </section>
@@ -211,7 +211,7 @@ export function DashboardShell({
         <section className="grid gap-6 xl:grid-cols-[1.18fr_0.82fr]">
           <AITrainingReport className="xl:col-span-2" initialReport={analysisReport} onReportChange={setAnalysisReport} trainingGoal={savedTrainingGoal} />
 
-          <SurfaceCard className="p-6">
+          <SurfaceCard className="p-6 max-sm:order-3">
             <div className="flex items-center justify-between gap-3">
               <div>
                 <div className="text-xs uppercase tracking-[0.25em] text-violet-300/80">Training Goal</div>
@@ -244,11 +244,11 @@ export function DashboardShell({
             </form>
           </SurfaceCard>
 
-          <div className="grid gap-6 content-start">
+          <div className="grid gap-6 content-start max-sm:order-2">
             <RecoveryCountdownCard className="max-w-none" report={analysisReport} title="Ready To Train" />
           </div>
 
-          <div className="xl:col-span-2 space-y-1 px-1 text-[11px] text-slate-500">
+          <div className="xl:col-span-2 space-y-1 px-1 text-[11px] text-slate-500 max-sm:order-4">
             <div>最新数据同步：{formatDateTime(latestDataSyncAt)}</div>
             <div>AI分析时间：{formatDateTime(analysisReport?.updatedAt)}</div>
           </div>
