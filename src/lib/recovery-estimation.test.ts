@@ -5,7 +5,7 @@ import * as recoveryEstimation from "./recovery-estimation.ts"
 
 const { estimateRecoveryHours } = recoveryEstimation
 
-test("scales recovery hours with training load and intensity (continuous)", () => {
+test("maps training load to recovery via a saturating power curve", () => {
   const recoveryHours = estimateRecoveryHours({
     durationMin: 105,
     distanceKm: 42,
@@ -16,23 +16,37 @@ test("scales recovery hours with training load and intensity (continuous)", () =
     vigorousIntensityMinutes: 12,
   })
 
-  // 165*0.09 + 12*0.15 + 1.2^2 + (3.6-2)*1.5 = 14.85 + 1.8 + 1.44 + 2.4 = 20.49
-  assert.equal(recoveryHours, 20.5)
+  // 165^0.68 * 0.85 * (1 + 0.08*1.2) ≈ 27.37 * 1.096 ≈ 30.0
+  assert.equal(recoveryHours, 30)
 })
 
-test("returns a low value for a very light session and clamps to the 2h floor", () => {
+test("uses duration/distance fallback when training load is missing", () => {
   const recoveryHours = estimateRecoveryHours({
     durationMin: 30,
     distanceKm: 8,
-    trainingLoad: 10,
+    trainingLoad: null,
     aerobicTrainingEffect: 0.8,
     anaerobicTrainingEffect: 0.2,
     moderateIntensityMinutes: 10,
     vigorousIntensityMinutes: 0,
   })
 
-  // 10*0.09 = 0.9 -> clamped to floor 2
-  assert.equal(recoveryHours, 2)
+  // (30*0.12 + 8*0.15) * (1 + 0.08*0.2) = 4.8 * 1.016 ≈ 4.9
+  assert.equal(recoveryHours, 4.9)
+})
+
+test("returns null when both load and volume are missing (data guard)", () => {
+  const recoveryHours = estimateRecoveryHours({
+    durationMin: null,
+    distanceKm: null,
+    trainingLoad: null,
+    aerobicTrainingEffect: 4,
+    anaerobicTrainingEffect: 3,
+    moderateIntensityMinutes: 50,
+    vigorousIntensityMinutes: 20,
+  })
+
+  assert.equal(recoveryHours, null)
 })
 
 test("is monotonic: a harder session never recovers faster than an easier one", () => {
@@ -88,6 +102,6 @@ test("can derive estimated recovery hours from a latest activity object", () => 
       moderateIntensityMinutes: 40,
       vigorousIntensityMinutes: 12,
     }),
-    20.5
+    30
   )
 })
