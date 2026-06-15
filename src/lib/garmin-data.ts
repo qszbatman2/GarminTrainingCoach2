@@ -219,6 +219,7 @@ export function computeActivityIntensityFromDetails(
     normalizedPower?: number | null
     lactateThresholdHr?: number | null
     functionalThresholdPower?: number | null
+    moderateHeartRateThreshold?: number | null
     vigorousHeartRateThreshold?: number | null
     vigorousPowerThreshold?: number | null
   }
@@ -238,19 +239,22 @@ export function computeActivityIntensityFromDetails(
   const normalizedPower = options?.normalizedPower ?? null
   const lactateThresholdHr = options?.lactateThresholdHr ?? null
   const functionalThresholdPower = options?.functionalThresholdPower ?? null
+  const explicitModerateHeartRateThreshold = options?.moderateHeartRateThreshold ?? null
   const explicitVigorousHeartRateThreshold = options?.vigorousHeartRateThreshold ?? null
   const explicitVigorousPowerThreshold = options?.vigorousPowerThreshold ?? null
 
   const moderateHeartRateThreshold =
-    lactateThresholdHr != null
-      ? lactateThresholdHr * 0.84
-      : averageHeartRate != null && maxHeartRate != null
-        ? Math.max(averageHeartRate, maxHeartRate * 0.78)
-        : averageHeartRate != null
-          ? averageHeartRate
-          : maxHeartRate != null
-            ? maxHeartRate * 0.78
-            : null
+    explicitModerateHeartRateThreshold != null
+      ? explicitModerateHeartRateThreshold
+      : lactateThresholdHr != null
+        ? lactateThresholdHr * 0.84
+        : averageHeartRate != null && maxHeartRate != null
+          ? Math.max(averageHeartRate, maxHeartRate * 0.78)
+          : averageHeartRate != null
+            ? averageHeartRate
+            : maxHeartRate != null
+              ? maxHeartRate * 0.78
+              : null
   const vigorousHeartRateThreshold =
     explicitVigorousHeartRateThreshold != null
       ? explicitVigorousHeartRateThreshold
@@ -829,7 +833,8 @@ export function getActivityDisplayValues(raw: unknown) {
     ],
     raw
   )
-  const vigorousHeartRateThreshold = getZoneLowerBoundary(["hr_in_timezones", "timeInHeartRateZones"], raw, 3)
+  const moderateHeartRateThreshold = getZoneLowerBoundary(["hr_in_timezones", "timeInHeartRateZones"], raw, 2)
+  const vigorousHeartRateThreshold = getZoneLowerBoundary(["hr_in_timezones", "timeInHeartRateZones"], raw, 4)
   const vigorousPowerThreshold = getZoneLowerBoundary(["power_in_timezones", "powerTimeInZones", "timeInPowerZones"], raw, 3)
   const summaryModerateIntensityMinutes = firstNumber(
     [
@@ -854,6 +859,7 @@ export function getActivityDisplayValues(raw: unknown) {
     normalizedPower,
     lactateThresholdHr,
     functionalThresholdPower,
+    moderateHeartRateThreshold,
     vigorousHeartRateThreshold,
     vigorousPowerThreshold,
   })

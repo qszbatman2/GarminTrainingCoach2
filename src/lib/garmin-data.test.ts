@@ -27,7 +27,7 @@ test("getActivityDisplayValues reads cycling cadence from legacy detail alias", 
   assert.equal(values.averageCadence, 91)
 })
 
-test("getActivityDisplayValues counts only zone 3+ heart rate or power as vigorous intensity", () => {
+test("getActivityDisplayValues treats zone 2-3 heart rate as moderate and only zone 4+ as vigorous", () => {
   const values = getActivityDisplayValues({
     summaryDTO: {
       averageHR: 135,
@@ -40,6 +40,8 @@ test("getActivityDisplayValues counts only zone 3+ heart rate or power as vigoro
       { zoneNumber: 1, zoneLowBoundary: 97, secsInZone: 0 },
       { zoneNumber: 2, zoneLowBoundary: 117, secsInZone: 120 },
       { zoneNumber: 3, zoneLowBoundary: 155, secsInZone: 0 },
+      { zoneNumber: 4, zoneLowBoundary: 165, secsInZone: 0 },
+      { zoneNumber: 5, zoneLowBoundary: 182, secsInZone: 0 },
     ],
     power_in_timezones: [
       { zoneNumber: 1, zoneLowBoundary: 0, secsInZone: 0 },
