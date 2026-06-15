@@ -111,9 +111,9 @@ export function AITrainingReport({
   }
 
   return (
-    <SurfaceCard className={`p-6 ${className}`}>
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-        <div>
+    <SurfaceCard className={`p-6 max-sm:flex max-sm:flex-col ${className}`}>
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between max-sm:order-3">
+        <div className="max-sm:hidden">
           <div className="flex flex-wrap items-center gap-2">
             <div className="text-xs uppercase tracking-[0.25em] text-violet-300/80">AI Coach</div>
             {trainingGoal ? <AccentPill tone="violet">已结合训练目标</AccentPill> : null}
@@ -122,7 +122,7 @@ export function AITrainingReport({
           <p className="mt-2 text-sm text-slate-300">首屏先回答今天能不能练，详细数据放后面。</p>
         </div>
         <button
-          className="rounded-full bg-violet-600 px-5 py-3 text-sm font-medium text-white transition hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-60"
+          className="rounded-full bg-violet-600 px-5 py-3 text-sm font-medium text-white transition hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-60 max-sm:w-full"
           disabled={loading}
           onClick={() => handleGenerate(true)}
           type="button"
@@ -131,10 +131,10 @@ export function AITrainingReport({
         </button>
       </div>
 
-      {error ? <div className="mt-5 rounded-2xl border border-rose-400/25 bg-rose-400/10 px-4 py-3 text-sm text-rose-200">{error}</div> : null}
+      {error ? <div className="mt-5 rounded-2xl border border-rose-400/25 bg-rose-400/10 px-4 py-3 text-sm text-rose-200 max-sm:order-1 max-sm:mt-0">{error}</div> : null}
 
       {result ? (
-        <div className="mt-5">
+        <div className="mt-5 max-sm:order-2 max-sm:mt-0">
           <SubtleCard className="border-violet-400/15 bg-[linear-gradient(135deg,rgba(139,92,246,0.14),rgba(15,23,42,0.3))] p-5">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex flex-wrap items-center gap-3">
@@ -169,7 +169,7 @@ export function AITrainingReport({
           </SubtleCard>
         </div>
       ) : (
-        <SubtleCard className="mt-5 p-5">
+        <SubtleCard className="mt-5 p-5 max-sm:order-2 max-sm:mt-0">
           <div className="text-sm text-slate-400">当前还没有 AI 报告</div>
           <div className="mt-2 text-xl font-semibold text-white">先生成首份建议，再决定今天怎么练。</div>
         </SubtleCard>
