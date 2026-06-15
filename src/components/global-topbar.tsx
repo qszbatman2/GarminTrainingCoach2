@@ -76,9 +76,9 @@ export function GlobalTopbar({ platformUser, garminEmail }: GlobalTopbarProps) {
 
   return (
     <header className="sticky top-0 z-50 border-b border-white/8 bg-[rgba(4,11,20,0.82)] backdrop-blur-2xl">
-      <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4 px-6 py-4">
-        <div className="flex flex-wrap items-center gap-3">
-          <Link className="font-[family:var(--font-display)] text-lg font-semibold tracking-tight text-white" href="/">
+      <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4 px-6 py-4 max-sm:flex-nowrap max-sm:gap-2 max-sm:px-4 max-sm:py-2.5">
+        <div className="flex flex-wrap items-center gap-3 max-sm:min-w-0">
+          <Link className="font-[family:var(--font-display)] text-lg font-semibold tracking-tight text-white max-sm:truncate max-sm:text-[15px]" href="/">
             Garmin AI Coach
           </Link>
           <nav className="flex flex-wrap items-center gap-2">
@@ -99,23 +99,27 @@ export function GlobalTopbar({ platformUser, garminEmail }: GlobalTopbarProps) {
           </nav>
         </div>
 
-        <div className="flex flex-wrap items-center justify-end gap-2 text-sm">
-          <AccentPill tone={platformUser ? "emerald" : "neutral"}>
-            {platformUser ? `平台：${platformUser.name}` : "平台：未登录"}
-          </AccentPill>
+        <div className="flex flex-wrap items-center justify-end gap-2 text-sm max-sm:flex-nowrap max-sm:gap-1.5">
+          <span className="max-sm:hidden">
+            <AccentPill tone={platformUser ? "emerald" : "neutral"}>
+              {platformUser ? `平台：${platformUser.name}` : "平台：未登录"}
+            </AccentPill>
+          </span>
           {platformUser ? (
             <button
-              className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-slate-200 transition hover:bg-white/[0.08]"
+              className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-slate-200 transition hover:bg-white/[0.08] max-sm:px-2.5 max-sm:py-1 max-sm:text-xs"
               onClick={() => signOut({ callbackUrl: "/" })}
               type="button"
             >
               退出登录
             </button>
           ) : null}
-          <AccentPill tone={garminEmail ? "cyan" : "neutral"}>{garminEmail ? `Garmin：${garminEmail}` : "Garmin：未绑定"}</AccentPill>
+          <span className="max-sm:hidden">
+            <AccentPill tone={garminEmail ? "cyan" : "neutral"}>{garminEmail ? `Garmin：${garminEmail}` : "Garmin：未绑定"}</AccentPill>
+          </span>
           {platformUser && garminEmail ? (
             <button
-              className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-slate-200 transition hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-60"
+              className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-slate-200 transition hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-60 max-sm:hidden"
               disabled={disconnectingGarmin}
               onClick={handleDisconnectGarmin}
               type="button"

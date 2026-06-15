@@ -589,7 +589,7 @@ export function DataSyncCenter({
 
             <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_320px]">
               <div className="rounded-[1.5rem] border border-white/8 bg-[linear-gradient(180deg,rgba(7,17,31,0.72),rgba(7,17,31,0.92))] p-4">
-                <div className="w-fit max-w-full">
+                <div className="w-fit max-w-full max-sm:overflow-x-auto">
                   <div className="flex gap-3">
                     <div className="w-7" />
                     <div className="relative mb-2" style={{ width: `${annualGridWidth}px`, height: "16px" }}>
@@ -877,7 +877,7 @@ export function DataSyncCenter({
 
         {validationTab === "activities" ? (
           <div className="mt-4 overflow-hidden rounded-3xl border border-white/10">
-            <div className="grid grid-cols-[1.4fr_0.8fr_0.8fr] bg-white/[0.04] px-5 py-3 text-xs uppercase tracking-[0.2em] text-slate-500">
+            <div className="grid grid-cols-[1.4fr_0.8fr_0.8fr] bg-white/[0.04] px-5 py-3 text-xs uppercase tracking-[0.2em] text-slate-500 max-sm:px-3 max-sm:py-2.5">
               <span>活动</span>
               <span>距离</span>
               <span>时长</span>
@@ -886,7 +886,7 @@ export function DataSyncCenter({
               <div className="px-5 py-8 text-sm text-slate-400">活动记录加载中...</div>
             ) : (effectiveSelectedDayDetail?.activities ?? []).length > 0 ? (
               effectiveSelectedDayDetail?.activities.map((activity) => (
-                <div className="grid grid-cols-[1.4fr_0.8fr_0.8fr] border-t border-white/8 px-5 py-4 text-sm text-slate-300" key={activity.id}>
+                <div className="grid grid-cols-[1.4fr_0.8fr_0.8fr] border-t border-white/8 px-5 py-4 text-sm text-slate-300 max-sm:px-3 max-sm:py-3" key={activity.id}>
                   <div>
                     <div className="font-medium text-white">{activity.name}</div>
                     <div className="mt-1 text-xs uppercase tracking-[0.18em] text-slate-500">{activity.type.replaceAll("_", " ")}</div>
