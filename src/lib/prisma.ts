@@ -12,4 +12,5 @@ const prisma = globalThis.prismaGlobal ?? prismaClientSingleton()
 
 export default prisma
 
-if (process.env.NODE_ENV !== "production") globalThis.prismaGlobal = prisma
+// 生产环境同样复用全局实例，避免 serverless 冷启动重复 new 导致连接泄漏打满连接池。
+globalThis.prismaGlobal = prisma
