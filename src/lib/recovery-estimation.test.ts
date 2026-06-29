@@ -1,9 +1,8 @@
 import assert from "node:assert/strict"
 import test from "node:test"
 
-import * as recoveryEstimation from "./recovery-estimation.ts"
+import { estimateRecoveryHours, getEstimatedRecoveryHoursFromActivity } from "./recovery-estimation.ts"
 
-const { estimateRecoveryHours } = recoveryEstimation
 
 test("maps training load to recovery via a saturating power curve", () => {
   const recoveryHours = estimateRecoveryHours({
@@ -87,13 +86,9 @@ test("clamps extreme sessions to the 48h ceiling", () => {
 })
 
 test("can derive estimated recovery hours from a latest activity object", () => {
-  const getEstimatedRecoveryHoursFromActivity = (
-    recoveryEstimation as { getEstimatedRecoveryHoursFromActivity?: (activity: { duration: number | null; distance: number | null; raw: unknown }) => number | null }
-  ).getEstimatedRecoveryHoursFromActivity
-
   assert.equal(typeof getEstimatedRecoveryHoursFromActivity, "function")
   assert.equal(
-    getEstimatedRecoveryHoursFromActivity?.({
+    getEstimatedRecoveryHoursFromActivity({
       duration: 105 * 60,
       distance: 42000,
       trainingLoad: 165,
