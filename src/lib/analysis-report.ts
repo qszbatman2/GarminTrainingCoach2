@@ -2,7 +2,7 @@ import { createHash } from "crypto"
 
 import { Prisma } from "@prisma/client"
 
-import { runTrainingAnalysisGraph } from "@/lib/ai/analysis-graph"
+import { ANALYSIS_GRAPH_VERSION, runTrainingAnalysisGraph } from "@/lib/ai/analysis-graph"
 import { createArkJsonCompletion } from "@/lib/ark"
 import prisma from "@/lib/prisma"
 import { buildTrainingAnalysisMessages } from "@/lib/training-prompt"
@@ -15,7 +15,7 @@ import {
 } from "@/lib/training-analysis"
 
 const REPORT_TYPE = "latest"
-const ANALYSIS_VERSION = "training-rule-v18-langgraph-multi-agent"
+const ANALYSIS_VERSION = ANALYSIS_GRAPH_VERSION
 
 function normalizeJson<T>(value: unknown) {
   return JSON.parse(JSON.stringify(value)) as T
@@ -74,7 +74,15 @@ async function generateAnalysisPayload(metrics: DailyMetricInput[], activities: 
 
     return {
       context,
-      analysis: parseTrainingAnalysis(content, context),
+      analysis: {
+        ...parseTrainingAnalysis(content, context),
+        meta: {
+          analysisMode: "single",
+          graphVersion: ANALYSIS_VERSION,
+          generatedBy: "single-prompt",
+          agentTraceAvailable: false,
+        },
+      },
     }
   }
 

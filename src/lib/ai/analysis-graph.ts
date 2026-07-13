@@ -12,6 +12,7 @@ import {
   type TrainingContext,
 } from "@/lib/training-analysis"
 
+export const ANALYSIS_GRAPH_VERSION = "training-rule-v18-langgraph-multi-agent"
 const MAX_REVISIONS = 1
 
 type AnalysisGraphState = {
@@ -59,6 +60,29 @@ const AnalysisState = Annotation.Root({
 
 function fallbackAnalysis(context: TrainingContext) {
   return parseTrainingAnalysis("{}", context)
+}
+
+function attachGraphMeta(
+  analysis: TrainingAnalysisResult,
+  state: Pick<AnalysisGraphState, "bodyAssessment" | "planDraft" | "reviewResult" | "retryCount" | "errors">,
+  analysisMode: "multi-agent" | "multi-agent-fallback"
+): TrainingAnalysisResult {
+  return {
+    ...analysis,
+    meta: {
+      analysisMode,
+      graphVersion: ANALYSIS_GRAPH_VERSION,
+      generatedBy: "langgraph",
+      agentTraceAvailable: true,
+      retryCount: state.retryCount,
+      errors: state.errors.length > 0 ? state.errors : undefined,
+    },
+    agentTrace: {
+      bodyAssessment: state.bodyAssessment,
+      planDraft: state.planDraft,
+      reviewResult: state.reviewResult,
+    },
+  }
 }
 
 function normalizeFinalAnalysis(analysis: FinalAnalysis, context: TrainingContext): TrainingAnalysisResult {
@@ -137,11 +161,18 @@ function buildAnalysisGraph() {
       })
 
       return {
-        finalAnalysis: normalizeFinalAnalysis(final, state.context),
+        finalAnalysis: attachGraphMeta(normalizeFinalAnalysis(final, state.context), state, "multi-agent"),
       }
     })
     .addNode("fallbackFinal", async (state) => ({
-      finalAnalysis: fallbackAnalysis(state.context),
+      finalAnalysis: attachGraphMeta(
+        fallbackAnalysis(state.context),
+        {
+          ...state,
+          errors: state.reviewResult?.violations ?? ["多 Agent 分析未通过审核，已回退到规则分析"],
+        },
+        "multi-agent-fallback"
+      ),
       errors: state.reviewResult?.violations ?? ["多 Agent 分析未通过审核，已回退到规则分析"],
     }))
     .addEdge(START, "bodyStatus")
@@ -170,9 +201,27 @@ export async function runTrainingAnalysisGraph(options: {
       errors: [],
     })
 
-    return result.finalAnalysis ?? fallbackAnalysis(options.context)
+    return (
+      result.finalAnalysis ??
+      attachGraphMeta(
+        fallbackAnalysis(options.context),
+        {
+          retryCount: 0,
+          errors: ["多 Agent 分析没有返回最终结果，已回退到规则分析"],
+        },
+        "multi-agent-fallback"
+      )
+    )
   } catch (error) {
     console.error("[Trae] Multi-agent analysis failed:", error)
-    return fallbackAnalysis(options.context)
+    const message = error instanceof Error ? error.message : "多 Agent 分析异常，已回退到规则分析"
+    return attachGraphMeta(
+      fallbackAnalysis(options.context),
+      {
+        retryCount: 0,
+        errors: [message],
+      },
+      "multi-agent-fallback"
+    )
   }
 }

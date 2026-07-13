@@ -296,6 +296,19 @@ export type TrainingAnalysisResult = {
     advice: string
     reasonAnalysis: string
   }
+  meta?: {
+    analysisMode: "single" | "multi-agent" | "multi-agent-fallback"
+    graphVersion: string
+    generatedBy: string
+    agentTraceAvailable: boolean
+    retryCount?: number
+    errors?: string[]
+  }
+  agentTrace?: {
+    bodyAssessment?: unknown
+    planDraft?: unknown
+    reviewResult?: unknown
+  }
 }
 
 export type TrainingAnalysisPayload = {
