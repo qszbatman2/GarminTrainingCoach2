@@ -16,7 +16,7 @@
     "test:file": "node --import tsx --test",
     "test:unit:watch": "node --import tsx --test --watch src/lib/*.test.ts",
     "verify": "npm run typecheck && npm run lint && npm run test",
-    "repair:timezone": "node scripts/repair-shanghai-times.mjs",
+    "repair:timezone": "node scripts/maintenance/repair-shanghai-times.mjs",
     "postinstall": "prisma generate"
   },
   "dependencies": {
