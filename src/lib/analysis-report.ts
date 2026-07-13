@@ -2,6 +2,7 @@ import { createHash } from "crypto"
 
 import { Prisma } from "@prisma/client"
 
+import { runTrainingAnalysisGraph } from "@/lib/ai/analysis-graph"
 import { createArkJsonCompletion } from "@/lib/ark"
 import prisma from "@/lib/prisma"
 import { buildTrainingAnalysisMessages } from "@/lib/training-prompt"
@@ -14,7 +15,7 @@ import {
 } from "@/lib/training-analysis"
 
 const REPORT_TYPE = "latest"
-const ANALYSIS_VERSION = "training-rule-v17-habit-aware-weekly-load"
+const ANALYSIS_VERSION = "training-rule-v18-langgraph-multi-agent"
 
 function normalizeJson<T>(value: unknown) {
   return JSON.parse(JSON.stringify(value)) as T
@@ -61,16 +62,30 @@ export function computeAnalysisInputHash(metrics: DailyMetricInput[], activities
 
 async function generateAnalysisPayload(metrics: DailyMetricInput[], activities: ActivityInput[], trainingGoal?: string | null) {
   const context = buildTrainingContext(metrics, activities, trainingGoal)
-  const content = await createArkJsonCompletion(
-    buildTrainingAnalysisMessages({
+  const normalizedTrainingGoal = normalizeTrainingGoal(trainingGoal)
+
+  if (process.env.AI_ANALYSIS_MODE === "single") {
+    const content = await createArkJsonCompletion(
+      buildTrainingAnalysisMessages({
+        context,
+        trainingGoal: normalizedTrainingGoal,
+      })
+    )
+
+    return {
       context,
-      trainingGoal: normalizeTrainingGoal(trainingGoal),
-    })
-  )
+      analysis: parseTrainingAnalysis(content, context),
+    }
+  }
+
+  const analysis = await runTrainingAnalysisGraph({
+    context,
+    trainingGoal: normalizedTrainingGoal,
+  })
 
   return {
     context,
-    analysis: parseTrainingAnalysis(content, context),
+    analysis,
   }
 }
 
