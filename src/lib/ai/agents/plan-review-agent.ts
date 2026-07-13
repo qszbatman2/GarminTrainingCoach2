@@ -8,6 +8,10 @@ function containsAnyText(value: unknown, keywords: string[]) {
   return keywords.some((keyword) => text.includes(keyword.toLowerCase()))
 }
 
+function getTodayPrescriptionText(draft: PlanDraft) {
+  return [draft.todayPlan.action, draft.todayPlan.intensity].join(" ")
+}
+
 function appendViolation(review: PlanReview, violation: string, instruction: string): PlanReview {
   return {
     approved: false,
@@ -21,13 +25,14 @@ function enforceRuleGuards(context: TrainingContext, draft: PlanDraft, review: P
   let guarded = review
 
   if (context.decision.shouldTrain === "不训") {
-    const hasTraining = containsAnyText(draft.todayPlan, ["z2", "z3", "阈值", "间歇", "冲刺", "训练", "骑"])
-    if (hasTraining && !containsAnyText(draft.todayPlan, ["不安排正式训练", "休息", "恢复活动", "步行", "拉伸"])) {
+    const prescriptionText = getTodayPrescriptionText(draft)
+    const hasTraining = containsAnyText(prescriptionText, ["z2", "z3", "阈值", "间歇", "冲刺", "训练", "骑"])
+    if (hasTraining && !containsAnyText(prescriptionText, ["不安排正式训练", "休息", "恢复活动", "步行", "拉伸"])) {
       guarded = appendViolation(guarded, "规则结论为不训，但计划仍包含正式训练表达。", "改为休息或 20-30 分钟恢复活动，不安排正式训练。")
     }
   }
 
-  if (context.decision.shouldTrain === "慎训" && containsAnyText(draft.todayPlan, ["z3", "z4", "z5", "阈值", "间歇", "冲刺", "高强度"])) {
+  if (context.decision.shouldTrain === "慎训" && containsAnyText(getTodayPrescriptionText(draft), ["z3", "z4", "z5", "阈值", "间歇", "冲刺", "高强度"])) {
     guarded = appendViolation(guarded, "规则结论为慎训，但计划包含高强度内容。", "改为 Z1-Z2 恢复强度，并明确禁止阈值、间歇和冲刺。")
   }
 

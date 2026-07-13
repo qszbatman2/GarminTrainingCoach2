@@ -3,6 +3,10 @@ import { z } from "zod"
 export const BodyStatusSchema = z.object({
   status: z.enum(["恢复优秀", "恢复良好", "中度疲劳", "重度疲劳", "未知"]),
   intensityTolerance: z.enum(["可承受正常训练", "只适合低强度", "不适合训练", "未知"]),
+  illnessRisk: z.object({
+    level: z.enum(["低", "中", "高", "未知"]),
+    reason: z.string().min(1),
+  }),
   riskFlags: z.array(z.string()).default([]),
   keyEvidence: z.array(z.string()).min(1).max(6),
   adviceFromBody: z.string().min(1),

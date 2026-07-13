@@ -72,7 +72,11 @@ def sync_garmin_data(req: SyncRequest):
 
         # Today's partial sync must avoid volatile fields. Otherwise the TS layer's
         # "fill gaps only" merge strategy may keep half-finished daily values forever.
-        stats = safe_fetch(client.get_stats, date_iso) if sync_mode == "full" else None
+        stats = safe_fetch(client.get_stats, date_iso)
+        if sync_mode == "partial_today" and isinstance(stats, dict):
+            stats = {"restingHeartRate": stats.get("restingHeartRate")}
+        elif sync_mode != "full":
+            stats = None
         sleep = safe_fetch(client.get_sleep_data, date_iso)  # Sleep detail
         hrv = safe_fetch(client.get_hrv_data, date_iso)  # HRV detail
         body_battery = safe_fetch(client.get_body_battery, date_iso, date_iso) if sync_mode == "full" else None
