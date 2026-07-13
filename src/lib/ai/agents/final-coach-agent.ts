@@ -8,6 +8,8 @@ import {
 } from "@/lib/ai/schemas"
 import type { TrainingContext } from "@/lib/training-analysis"
 
+// 最终总教练 Agent：
+// 把前面 Agent 的结构化结果合成为用户可读分析；硬结论仍会由 Graph 再校准。
 export async function runFinalCoachAgent(
   model: ArkChatModel,
   options: {

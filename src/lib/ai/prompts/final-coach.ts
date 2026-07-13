@@ -1,6 +1,8 @@
 import type { BodyAssessment, PlanDraft, PlanReview } from "@/lib/ai/schemas"
 import type { TrainingContext } from "@/lib/training-analysis"
 
+// FinalCoachAgent 的消息构造：
+// 它拿到规则结论和所有 Agent 输出后，只负责组织最终文案和解释，不负责重新决策。
 export function buildFinalCoachMessages(options: {
   context: TrainingContext
   bodyAssessment: BodyAssessment

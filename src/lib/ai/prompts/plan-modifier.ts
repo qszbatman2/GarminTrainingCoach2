@@ -1,6 +1,8 @@
 import type { BodyAssessment, PlanReview } from "@/lib/ai/schemas"
 import type { TrainingContext } from "@/lib/training-analysis"
 
+// PlanModifierAgent 的消息构造：
+// 它只能在规则结论允许的范围内调整处方；如果上一轮审核失败，会收到 previousReview 进行修正。
 export function buildPlanModifierMessages(options: {
   context: TrainingContext
   bodyAssessment: BodyAssessment

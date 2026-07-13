@@ -3,15 +3,19 @@ import { buildPlanReviewMessages } from "@/lib/ai/prompts/plan-review"
 import { PlanReviewSchema, type BodyAssessment, type PlanDraft, type PlanReview } from "@/lib/ai/schemas"
 import type { TrainingContext } from "@/lib/training-analysis"
 
+// 在结构化对象里做关键词检查，主要用于兜住 LLM 审核遗漏的明显风险。
 function containsAnyText(value: unknown, keywords: string[]) {
   const text = JSON.stringify(value).toLowerCase()
   return keywords.some((keyword) => text.includes(keyword.toLowerCase()))
 }
 
+// 只抽取今天真正要执行的动作和强度。
+// forbidden 里的“禁止高强度”不应被误判成今天安排了高强度。
 function getTodayPrescriptionText(draft: PlanDraft) {
   return [draft.todayPlan.action, draft.todayPlan.intensity].join(" ")
 }
 
+// 把本地硬规则发现的问题并入 LLM 审核结果。
 function appendViolation(review: PlanReview, violation: string, instruction: string): PlanReview {
   return {
     approved: false,
@@ -21,6 +25,8 @@ function appendViolation(review: PlanReview, violation: string, instruction: str
   }
 }
 
+// 本地安全闸门：
+// 即使 PlanReviewAgent 没识别出违规，这里也会强制拦截“不训仍训练”“慎训给高强度”等底线问题。
 function enforceRuleGuards(context: TrainingContext, draft: PlanDraft, review: PlanReview): PlanReview {
   let guarded = review
 
@@ -43,6 +49,8 @@ function enforceRuleGuards(context: TrainingContext, draft: PlanDraft, review: P
   return guarded
 }
 
+// 审核 Agent：
+// 先让模型按 prompt 审核，再用本地硬规则补一层确定性校验。
 export async function runPlanReviewAgent(
   model: ArkChatModel,
   options: {

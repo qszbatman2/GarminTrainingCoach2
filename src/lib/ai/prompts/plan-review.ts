@@ -1,6 +1,8 @@
 import type { BodyAssessment, PlanDraft } from "@/lib/ai/schemas"
 import type { TrainingContext } from "@/lib/training-analysis"
 
+// PlanReviewAgent 的消息构造：
+// 它只判断草案是否违反规则或安全边界，不生成新的完整计划。
 export function buildPlanReviewMessages(options: {
   context: TrainingContext
   bodyAssessment: BodyAssessment

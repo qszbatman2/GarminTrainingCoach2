@@ -1,5 +1,6 @@
 import type { TrainingContext } from "@/lib/training-analysis"
 
+// 把恢复窗口单独整理给模型，避免它只看到 recoveryHours 就误判“当前仍未恢复”。
 function getRecoveryWindowStatus(context: TrainingContext) {
   const latestSession = context.activity.latestSession
   const readyAt = context.recovery.readyAt ? new Date(context.recovery.readyAt) : null
@@ -20,6 +21,8 @@ function getRecoveryWindowStatus(context: TrainingContext) {
   }
 }
 
+// BodyStatusAgent 的消息构造：
+// system 负责限定角色和边界，user 只提供身体状态相关上下文，避免模型提前生成训练计划。
 export function buildBodyStatusMessages(context: TrainingContext) {
   return [
     {
