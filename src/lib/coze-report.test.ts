@@ -12,6 +12,7 @@ const payload: TrainingAnalysisPayload = {
       raw: "提升 FTP",
       category: "ftp",
       keywords: ["FTP"],
+      weeklyDurationTargetMin: null,
     },
     dateRange: {
       metricStart: "2026-05-13",
@@ -197,6 +198,14 @@ const payload: TrainingAnalysisPayload = {
         sameWeekdayAverageDistanceKm: 24,
       },
       recoverySignals: ["恢复良好"],
+      targetAdherence: {
+        weeklyDurationTargetMin: null,
+        previousWeekDurationMin: null,
+        recent6WeekAvgDurationMin: null,
+        previousWeekTargetRatio: null,
+        recent6WeekTargetRatio: null,
+        warning: null,
+      },
     },
     decision: {
       shouldTrain: "可训",

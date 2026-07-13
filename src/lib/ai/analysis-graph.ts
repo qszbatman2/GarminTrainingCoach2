@@ -12,7 +12,7 @@ import {
   type TrainingContext,
 } from "@/lib/training-analysis"
 
-export const ANALYSIS_GRAPH_VERSION = "training-rule-v18-langgraph-multi-agent"
+export const ANALYSIS_GRAPH_VERSION = "training-rule-v19-weekly-target-aware"
 const MAX_REVISIONS = 1
 
 type AnalysisGraphState = {

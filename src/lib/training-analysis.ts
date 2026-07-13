@@ -120,6 +120,7 @@ export type TrainingContext = {
     raw: string | null
     category: GoalCategory
     keywords: string[]
+    weeklyDurationTargetMin: number | null
   }
   dateRange: {
     metricStart: string | null
@@ -270,6 +271,14 @@ export type TrainingContext = {
       conclusion: WeeklyLoadConclusion
     }
     recoverySignals: string[]
+    targetAdherence: {
+      weeklyDurationTargetMin: number | null
+      previousWeekDurationMin: number | null
+      recent6WeekAvgDurationMin: number | null
+      previousWeekTargetRatio: number | null
+      recent6WeekTargetRatio: number | null
+      warning: string | null
+    }
     overall: {
       conclusion: WeeklyOverallConclusion
       advice: string
@@ -864,6 +873,25 @@ function extractGoalKeywords(goal: string | null) {
     .slice(0, 8)
 }
 
+function extractWeeklyDurationTargetMin(goal: string | null) {
+  if (!goal) {
+    return null
+  }
+
+  const normalized = goal.replace(/\s+/g, "")
+  const weeklyHourMatch = normalized.match(/每周[^，。,；;]*?(?:不低于|至少|保证|>=|＞=|大于等于)?(\d+(?:\.\d+)?)(?:h|H|小时)/)
+  if (weeklyHourMatch) {
+    return Math.round(Number(weeklyHourMatch[1]) * 60)
+  }
+
+  const weeklyMinuteMatch = normalized.match(/每周[^，。,；;]*?(?:不低于|至少|保证|>=|＞=|大于等于)?(\d+(?:\.\d+)?)(?:min|分钟)/i)
+  if (weeklyMinuteMatch) {
+    return Math.round(Number(weeklyMinuteMatch[1]))
+  }
+
+  return null
+}
+
 function categorizeTrainingGoal(goal: string | null): GoalCategory {
   if (!goal) {
     return "general"
@@ -1077,24 +1105,32 @@ function getWeeklyLoadFocus(activities: EnrichedActivity[]): WeeklyLoadFocus {
 function buildWeeklyAssessment(options: {
   latestMetric: EnrichedMetric
   activities: EnrichedActivity[]
+  goal: TrainingContext["goal"]
   loadRatio: number | null
   latestRecoveryHours: number | null
   abnormalities: TrainingContext["abnormalities"]
 }) {
-  const { latestMetric, activities, loadRatio, latestRecoveryHours, abnormalities } = options
+  const { latestMetric, activities, goal, loadRatio, latestRecoveryHours, abnormalities } = options
   const referenceDate = latestMetric.date
   const weekStart = startOfWeek(referenceDate)
   const monthStart = startOfMonth(referenceDate)
   const weekElapsedDays = getElapsedDaysInclusive(weekStart, referenceDate)
   const monthElapsedDays = getElapsedDaysInclusive(monthStart, referenceDate)
+  const previousWeekStart = addShanghaiDays(weekStart, -7)
+  const previousWeekEnd = addShanghaiDays(weekStart, -1)
 
   const weekActivities = getRangeItems(activities, weekStart, referenceDate)
+  const previousWeekActivities = getRangeItems(activities, previousWeekStart, previousWeekEnd)
+  const recent6WeekActivities = getWindowBefore(activities, weekStart, 42)
   const monthActivities = getRangeItems(activities, monthStart, referenceDate)
   const activityIntensityDays = buildActivityIntensityDays(activities)
   const weekActivityIntensityDays = getRangeItems(activityIntensityDays, weekStart, referenceDate)
   const monthActivityIntensityDays = getRangeItems(activityIntensityDays, monthStart, referenceDate)
 
   const weekDurationMin = sum(weekActivities.map((activity) => activity.durationMin))
+  const previousWeekDurationMin = sum(previousWeekActivities.map((activity) => activity.durationMin))
+  const recent6WeekDurationMin = sum(recent6WeekActivities.map((activity) => activity.durationMin))
+  const recent6WeekAvgDurationMin = recent6WeekDurationMin != null ? recent6WeekDurationMin / 6 : null
   const monthDurationMin = sum(monthActivities.map((activity) => activity.durationMin))
   const weekDistanceKm = sum(weekActivities.map((activity) => activity.distanceKm))
   const monthDistanceKm = sum(monthActivities.map((activity) => activity.distanceKm))
@@ -1284,6 +1320,16 @@ function buildWeeklyAssessment(options: {
   const loadConclusion = getWeeklyLoadConclusion(loadScore)
   const intensityConclusion = getWeeklyLoadConclusion(intensityScore)
   const recoveryWeak = recoverySignals.length >= 2
+  const weeklyDurationTargetMin = goal.weeklyDurationTargetMin
+  const previousWeekTargetRatio = ratio(previousWeekDurationMin, weeklyDurationTargetMin, 2)
+  const recent6WeekTargetRatio = ratio(recent6WeekAvgDurationMin, weeklyDurationTargetMin, 2)
+  const durationTargetUnderachieved =
+    weeklyDurationTargetMin != null &&
+    ((previousWeekTargetRatio != null && previousWeekTargetRatio < 1) || (recent6WeekTargetRatio != null && recent6WeekTargetRatio < 1))
+  const targetWarning =
+    durationTargetUnderachieved
+      ? `周目标为 ${weeklyDurationTargetMin} 分钟；上周训练 ${round(previousWeekDurationMin, 0) ?? "--"} 分钟，近 6 周平均 ${round(recent6WeekAvgDurationMin, 0) ?? "--"} 分钟，均未达到目标。`
+      : null
 
   let overallConclusion: WeeklyOverallConclusion = "训练合理"
   let advice = "本周节奏基本合理，按当前计划推进即可。"
@@ -1299,15 +1345,18 @@ function buildWeeklyAssessment(options: {
     advice = "本周负荷已经偏重，立即下调强度并优先恢复。"
     ruleReason = "本周截至当前周进度的训练强度已经明显高于最近 4 周同进度水平，且恢复信号已出现恶化，继续堆量存在过度训练风险。"
   } else if (
+    durationTargetUnderachieved ||
     (loadConclusion === "不足" || loadConclusion === "偏低") &&
     (intensityConclusion === "不足" || intensityConclusion === "偏低") &&
     ((loadScore ?? 1) < 0.75 || (intensityScore ?? 1) < 0.8 || (loadRatio ?? 1) < 0.5)
   ) {
     overallConclusion = "训练不足"
-    advice = recoveryWeak ? "本周执行偏少，先修复恢复状态，再尽快回到正常训练频率。" : "本周训练明显偏少，接下来别再拖，尽快补回正常训练节奏。"
-    ruleReason = recoveryWeak
-      ? "本周截至当前周进度的训练量和训练强度都低于最近 4 周同进度水平，但当前恢复信号也不理想，说明不能简单视为执行懈怠。"
-      : "本周截至当前周进度的训练量和训练强度都显著低于最近 4 周同进度水平，当前更像训练执行不足而不是恢复性减量。"
+    advice = recoveryWeak ? "训练量长期低于目标，先控强度修复恢复，再尽快补回训练频率。" : "训练量已经低于周目标，接下来必须补回正常训练节奏。"
+    ruleReason = targetWarning
+      ? `${targetWarning} 不能只和偏低的近期均值相比后判断为合理。`
+      : recoveryWeak
+        ? "本周截至当前周进度的训练量和训练强度都低于最近 4 周同进度水平，但当前恢复信号也不理想，说明不能简单视为执行懈怠。"
+        : "本周截至当前周进度的训练量和训练强度都显著低于最近 4 周同进度水平，当前更像训练执行不足而不是恢复性减量。"
   } else if (
     loadConclusion === "偏高" ||
     intensityConclusion === "偏高" ||
@@ -1369,6 +1418,14 @@ function buildWeeklyAssessment(options: {
       conclusion: intensityConclusion,
     },
     recoverySignals,
+    targetAdherence: {
+      weeklyDurationTargetMin,
+      previousWeekDurationMin: round(previousWeekDurationMin, 0),
+      recent6WeekAvgDurationMin: round(recent6WeekAvgDurationMin, 0),
+      previousWeekTargetRatio,
+      recent6WeekTargetRatio,
+      warning: targetWarning,
+    },
     overall: {
       conclusion: overallConclusion,
       advice,
@@ -1555,6 +1612,7 @@ export function buildTrainingContext(metrics: DailyMetricInput[], activities: Ac
     raw: normalizedTrainingGoal,
     category: categorizeTrainingGoal(normalizedTrainingGoal),
     keywords: extractGoalKeywords(normalizedTrainingGoal),
+    weeklyDurationTargetMin: extractWeeklyDurationTargetMin(normalizedTrainingGoal),
   } satisfies TrainingContext["goal"]
   const latestMetric = [...sortedMetrics].reverse().find(isMetricUsableForAnalysis) ?? null
   const latestActivity = sortedActivities[sortedActivities.length - 1] ?? null
@@ -1677,6 +1735,14 @@ export function buildTrainingContext(metrics: DailyMetricInput[], activities: Ac
           conclusion: "未知",
         },
         recoverySignals: [],
+        targetAdherence: {
+          weeklyDurationTargetMin: goal.weeklyDurationTargetMin,
+          previousWeekDurationMin: null,
+          recent6WeekAvgDurationMin: null,
+          previousWeekTargetRatio: null,
+          recent6WeekTargetRatio: null,
+          warning: null,
+        },
         overall: {
           conclusion: "未知",
           advice: "当前周训练数据不足，暂时无法评估本周训练量是否合理。",
@@ -1801,6 +1867,7 @@ export function buildTrainingContext(metrics: DailyMetricInput[], activities: Ac
   const weeklyAssessment = buildWeeklyAssessment({
     latestMetric,
     activities: sortedActivities,
+    goal,
     loadRatio,
     latestRecoveryHours,
     abnormalities,
