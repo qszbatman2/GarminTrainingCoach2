@@ -73,6 +73,23 @@ type SelectedDayDetail = {
   activities: FieldActivityRecord[]
 }
 
+async function fetchSelectedDayDetail(date: string, signal?: AbortSignal): Promise<SelectedDayDetail> {
+  const response = await fetch(`/api/data/day?date=${encodeURIComponent(date)}`, {
+    cache: "no-store",
+    signal,
+  })
+  const data = (await response.json()) as { error?: string } & SelectedDayDetail
+  if (!response.ok) {
+    throw new Error(typeof data.error === "string" ? data.error : "读取单日数据失败")
+  }
+
+  return {
+    date: data.date,
+    metric: data.metric,
+    activities: Array.isArray(data.activities) ? data.activities : [],
+  }
+}
+
 function asStringArray(value: unknown) {
   return Array.isArray(value) ? value.map((item) => String(item)) : []
 }
@@ -367,22 +384,8 @@ export function DataSyncCenter({
 
     const controller = new AbortController()
 
-    void fetch(`/api/data/day?date=${encodeURIComponent(effectiveSelectedCalendarDate)}`, {
-      cache: "no-store",
-      signal: controller.signal,
-    })
-      .then(async (response) => {
-        const data = (await response.json()) as { error?: string } & SelectedDayDetail
-        if (!response.ok) {
-          throw new Error(typeof data.error === "string" ? data.error : "读取单日数据失败")
-        }
-
-        setSelectedDayDetail({
-          date: data.date,
-          metric: data.metric,
-          activities: Array.isArray(data.activities) ? data.activities : [],
-        })
-      })
+    void fetchSelectedDayDetail(effectiveSelectedCalendarDate, controller.signal)
+      .then(setSelectedDayDetail)
       .catch((error: unknown) => {
         if (error instanceof DOMException && error.name === "AbortError") {
           return
@@ -423,6 +426,9 @@ export function DataSyncCenter({
           ? `同步完成：写入 1 条每日快照，活动 ${data.activitiesCount} 条。已更新 ${updatedFields.length > 0 ? updatedFields.join("、") : "缺口数据"}。`
           : `同步完成：当前日期无新增差异，活动 ${data.activitiesCount} 条。`
       )
+      setSelectedCalendarDate(syncDate)
+      const detail = await fetchSelectedDayDetail(syncDate)
+      setSelectedDayDetail(detail)
       router.refresh()
     } catch (error: unknown) {
       setSyncUpdatedFields([])
